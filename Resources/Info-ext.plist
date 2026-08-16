@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>SmartCardToken</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.smartcard.tokenapp.token</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>SmartCardToken</string>
+	<!-- App extensions are XPC bundles, not applications. -->
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.ctk-tokens</string>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- Our private AID, not the PIV one. Claiming PIV meant racing
+			     Apple's built-in pivtoken for the card, and the winner varied
+			     between reboots. This one only we answer. -->
+			<key>com.apple.ctk.aid</key>
+			<array>
+				<string>F0534D43415244</string>
+			</array>
+			<key>com.apple.ctk.class-id</key>
+			<string>dev.smartcard.tokenapp.token</string>
+			<!-- CryptoTokenKit instantiates this class by name; it is
+			     <SwiftModule>.<Class>, not NSExtensionPrincipalClass. -->
+			<key>com.apple.ctk.driver-class</key>
+			<string>SmartCardToken.TokenDriver</string>
+			<key>com.apple.ctk.token-type</key>
+			<string>smartcard</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

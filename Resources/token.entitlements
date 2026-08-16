@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- pkd refuses to register an extension without this: "plug-ins must be
+	     sandboxed". It is not optional, and the failure is silent apart from
+	     that one line in the pkd log. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Reaching the reader from inside the sandbox. Without it the extension
+	     registers but every APDU fails. -->
+	<key>com.apple.security.smartcard</key>
+	<true/>
+</dict>
+</plist>
