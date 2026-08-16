@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>SmartCardBLEToken</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.smartcard.bleapp.token</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>SmartCardBLEToken</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Requests a signature from your wireless smart card.</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.ctk-tokens</string>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- A persistent token declares only these two. No AID and no
+			     token-type: there is no card and no reader to match against,
+			     which is exactly why the app has to register it explicitly.
+			     Apple's own PlatformSSOToken has the same pair and nothing
+			     else. -->
+			<key>com.apple.ctk.class-id</key>
+			<string>dev.smartcard.bleapp.token</string>
+			<key>com.apple.ctk.driver-class</key>
+			<string>SmartCardBLEToken.TokenDriver</string>
+		</dict>
+	</dict>
+</dict>
+</plist>
