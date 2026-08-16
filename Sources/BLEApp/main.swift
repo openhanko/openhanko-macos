@@ -76,15 +76,21 @@ final class Controller {
         keyItem?.canSign = true
         keyItem?.canDecrypt = false
         keyItem?.canPerformKeyExchange = false
-        // Marks the key as a credential LocalAuthentication may offer, which is
-        // what an in-session unlock (System Settings) needs.
+        // False, and tested rather than assumed.
         //
-        // The earlier `false` conflated two cases. Before login there is no user
-        // session for CoreBluetooth and this cannot work; in session it demonstrably
-        // does. The flag is not scopable to one of those, so the driver's short
-        // timeouts are what keep the pre-login case harmless: it fails in about
-        // four seconds and the password prompt proceeds.
-        keyItem?.isSuitableForLogin = true
+        // Setting this true does not get a persistent token into the
+        // LocalAuthentication path. Measured: with the flag on and the token
+        // paired, unlocking System Settings produced a PIN prompt that macOS
+        // served entirely over the wire through Apple's pivtoken — the device's
+        // own trace recorded IccPowerOn and a CCID signature 181 ms after the
+        // button press, and not one BLE event. `sc_auth identities` had said the
+        // same thing beforehand, listing only com.apple.pivtoken.
+        //
+        // The gap is not this flag. Smart-card login wants a reader-backed
+        // token, and a persistent token has no reader. Leaving the flag on would
+        // advertise a login credential that cannot serve a login, which is risk
+        // without benefit.
+        keyItem?.isSuitableForLogin = false
         keyItem?.publicKeyData = publicKeyData
         keyItem?.keyType = (attributes[kSecAttrKeyType as String] as? String) ?? (kSecAttrKeyTypeECSECPrimeRandom as String)
         keyItem?.keySizeInBits = (attributes[kSecAttrKeySizeInBits as String] as? Int) ?? 256
