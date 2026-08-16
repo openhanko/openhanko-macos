@@ -59,8 +59,16 @@ final class Token: TKToken, TKTokenDelegate {
 // MARK: - Session
 
 final class TokenSession: TKTokenSession, TKTokenSessionDelegate {
-    /// How long to keep asking while waiting for a human to press the button.
-    private let presenceTimeout: TimeInterval = 20
+    // These two are a safety property, not a tuning knob.
+    //
+    // Once a key is marked suitable for login, this driver sits inside an
+    // authentication path, and anything slow there is dangerous: an
+    // authorization plugin that took ~20 s per attempt once locked this machine
+    // out of its own login window until a reboot. A driver that cannot reach
+    // the device must fail quickly and let the password prompt through, so
+    // both budgets are deliberately short. Their sum bounds the worst case.
+    private let presenceTimeout: TimeInterval = 8
+    private let connectTimeout: TimeInterval = 4
 
     /// TKTokenSession already declares `token`; this is the same object,
     /// narrowed to our subclass so the device identifier is reachable.
@@ -89,7 +97,7 @@ final class TokenSession: TKTokenSession, TKTokenSessionDelegate {
 
         let card = BLECard()
         do {
-            try card.connect(preferring: bleToken?.deviceIdentifier, timeout: 15)
+            try card.connect(preferring: bleToken?.deviceIdentifier, timeout: connectTimeout)
         } catch {
             note("connect failed: \(error)")
             throw TKError(.tokenNotFound)

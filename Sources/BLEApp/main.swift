@@ -58,6 +58,12 @@ final class Controller {
         }
 
         let instanceID = identifier.uuidString
+
+        // Remove before adding. ctkd persists a token's keychain contents per
+        // instance ID, so re-pairing an existing instance keeps the *old*
+        // published attributes and the change appears to have no effect — a
+        // failure mode already paid for once on the wired driver.
+        driverConfiguration.removeTokenConfiguration(for: instanceID)
         let configuration = driverConfiguration.addTokenConfiguration(for: instanceID)
 
         let label = (SecCertificateCopySubjectSummary(certificate) as String?) ?? "smart-card"
@@ -70,7 +76,15 @@ final class Controller {
         keyItem?.canSign = true
         keyItem?.canDecrypt = false
         keyItem?.canPerformKeyExchange = false
-        keyItem?.isSuitableForLogin = false  // no BLE before login: see README
+        // Marks the key as a credential LocalAuthentication may offer, which is
+        // what an in-session unlock (System Settings) needs.
+        //
+        // The earlier `false` conflated two cases. Before login there is no user
+        // session for CoreBluetooth and this cannot work; in session it demonstrably
+        // does. The flag is not scopable to one of those, so the driver's short
+        // timeouts are what keep the pre-login case harmless: it fails in about
+        // four seconds and the password prompt proceeds.
+        keyItem?.isSuitableForLogin = true
         keyItem?.publicKeyData = publicKeyData
         keyItem?.keyType = (attributes[kSecAttrKeyType as String] as? String) ?? (kSecAttrKeyTypeECSECPrimeRandom as String)
         keyItem?.keySizeInBits = (attributes[kSecAttrKeySizeInBits as String] as? Int) ?? 256
