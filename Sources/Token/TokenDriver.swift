@@ -50,6 +50,7 @@ func note(_ message: String) {
 enum PIV {
     /// GET DATA object identifiers, as the 0x5C tag-list the card expects.
     static let certificate9A = Data([0x5c, 0x03, 0x5f, 0xc1, 0x05])
+    static let certificate9D = Data([0x5c, 0x03, 0x5f, 0xc1, 0x0b])
 
     static let slotAuthentication: UInt8 = 0x9a
 
@@ -185,6 +186,52 @@ final class TokenDriver: TKSmartCardTokenDriver, TKSmartCardTokenDriverDelegate 
         // rather than caching one authentication forever.
         keyItem.constraints = [NSNumber(value: TKTokenOperation.signData.rawValue): TokenSession.pinConstraint]
 
+        // Slot 9D, the key-management key, published for key agreement.
+        //
+        // macOS wraps the login keychain unlock key to a PIV key-management key
+        // when a card is paired. Publishing only 9A meant it found nothing
+        // suitable and said so — "No suitable key was found on the selected
+        // SmartCard" — leaving the account password required after every
+        // smart-card login just to open the keychain.
+        //
+        // Absent rather than fatal if the slot is empty: a card with no 9D is
+        // still perfectly usable for authentication, just without this.
+        var keychainItems: [TKTokenKeychainItem] = []
+        if let certificateItem { keychainItems.append(certificateItem) }
+        keychainItems.append(keyItem)
+
+        if let managementWrapper = try? smartCard.transmit(ins: 0xcb, p1: 0x3f, p2: 0xff,
+                                                           data: PIV.certificate9D, le: 0),
+           let managementContainer = TLV.value(of: 0x53, in: managementWrapper),
+           let managementDER = TLV.value(of: 0x70, in: managementContainer),
+           let managementCertificate = SecCertificateCreateWithData(nil, managementDER as CFData) {
+
+            let managementID = "9d" as NSString
+            let managementLabel = (SecCertificateCopySubjectSummary(managementCertificate) as String?)
+                ?? label
+
+            if let item = TKTokenKeychainCertificate(certificate: managementCertificate,
+                                                     objectID: managementID) {
+                item.label = managementLabel
+                keychainItems.append(item)
+            }
+            if let managementKey = TKTokenKeychainKey(certificate: managementCertificate,
+                                                      objectID: managementID) {
+                managementKey.label = managementLabel
+                managementKey.canSign = false
+                managementKey.canDecrypt = false
+                managementKey.canPerformKeyExchange = true
+                managementKey.isSuitableForLogin = false
+                // Unconstrained on purpose. This key is used while macOS opens
+                // the login keychain immediately after a login the user already
+                // authorised with a press; asking again there reads as broken.
+                keychainItems.append(managementKey)
+                note("publishing slot 9D for key agreement")
+            }
+        } else {
+            note("no slot 9D certificate; login keychain unlock will not be available")
+        }
+
         // The instance ID must be stable for the same physical card, or macOS
         // treats it as a new token on every insertion and pairings evaporate.
         // The suffix is deliberate. ctkd persists a token's keychain contents
@@ -192,19 +239,17 @@ final class TokenDriver: TKSmartCardTokenDriver, TKSmartCardTokenDriverDelegate 
         // Apple's header requires constraints to stay constant for the token's
         // lifetime. Changing the ID is how you get those contents rebuilt after
         // altering constraints; without it the old ones silently win.
-        let instanceID = certificateDER.sha256Hex + ".v3"
+        let instanceID = certificateDER.sha256Hex + ".v4"
 
         note("publishing key: canSign=\(keyItem.canSign) login=\(keyItem.isSuitableForLogin) constraints=\(keyItem.constraints ?? [:])")
 
         let token = Token(smartCard: smartCard, aid: AID,
                           instanceID: instanceID, tokenDriver: driver)
-        if let certificateItem {
-            // OpenSCToken does this inside the token's own initialiser. Doing it
-            // here works too, but note whether the container even exists — if
-            // keychainContents is nil the fill silently does nothing.
-            note("keychainContents present: \(token.keychainContents != nil)")
-            token.keychainContents?.fill(with: [certificateItem, keyItem])
-        }
+        // OpenSCToken does this inside the token's own initialiser. Doing it
+        // here works too, but note whether the container even exists — if
+        // keychainContents is nil the fill silently does nothing.
+        note("keychainContents present: \(token.keychainContents != nil), \(keychainItems.count) item(s)")
+        token.keychainContents?.fill(with: keychainItems)
         note("token created, instance \(instanceID)")
         return token
     }
@@ -339,11 +384,58 @@ final class TokenSession: TKSmartCardTokenSession, TKTokenSessionDelegate {
                       keyObjectID: Any,
                       algorithm: TKTokenKeyAlgorithm) -> Bool {
         note("supportsOperation \(operation.rawValue) key=\(keyObjectID)")
-        guard operation == .signData else { return false }
+
+        // Slot 9D does key agreement and nothing else; slot 9A signs and
+        // nothing else. Saying otherwise gets the wrong key handed the wrong
+        // operation and a 6a86 from the card.
+        if operation == .performKeyExchange {
+            guard "\(keyObjectID)" == "9d" else { return false }
+            // Standard and cofactor are the same operation on P-256, whose
+            // cofactor is 1. CryptoTokenKit derives the X9.63 KDF variants from
+            // the raw secret itself, so answering for these two is enough.
+            let ok = algorithm.isAlgorithm(.ecdhKeyExchangeStandard)
+                || algorithm.isAlgorithm(.ecdhKeyExchangeCofactor)
+            note("  key exchange algorithm supported=\(ok)")
+            return ok
+        }
+
+        guard operation == .signData, "\(keyObjectID)" == "9a" else { return false }
         // The card signs a digest; macOS asks for the X9.62 variants for EC and
         // PKCS#1 for RSA. Anything else it can derive from these.
         return algorithm.isAlgorithm(.ecdsaSignatureDigestX962SHA256)
             || algorithm.isAlgorithm(.rsaSignatureDigestPKCS1v15SHA256)
+    }
+
+    /// ECDH against slot 9D. macOS hands us the other party's public point and
+    /// expects the shared secret back, which it uses to wrap the login keychain
+    /// unlock key so a smart-card login does not also demand the password.
+    func tokenSession(_ session: TKTokenSession,
+                      performKeyExchange otherPartyKeyData: Data,
+                      keyObjectID objectID: Any,
+                      algorithm: TKTokenKeyAlgorithm,
+                      parameters: TKTokenKeyExchangeParameters) throws -> Data {
+        let card = try smartCardForSession()
+        note("key exchange with \(objectID), peer point \(otherPartyKeyData.count) bytes")
+
+        // 7C { 82 00, 85 <peer public point> } — tag 0x85 is what distinguishes
+        // key agreement from the signing use of the same command.
+        var dynamic = Data([0x82, 0x00, 0x85])
+        dynamic.append(TLV.length(otherPartyKeyData.count))
+        dynamic.append(otherPartyKeyData)
+
+        var body = Data([0x7c])
+        body.append(TLV.length(dynamic.count))
+        body.append(dynamic)
+
+        let response = try card.transmit(ins: 0x87, p1: PIV.algorithmECCP256,
+                                         p2: 0x9d, data: body, le: 0)
+
+        guard let dynamicResponse = TLV.value(of: 0x7c, in: response),
+              let secret = TLV.value(of: 0x82, in: dynamicResponse) else {
+            throw CardError.malformedResponse("no shared secret in the key agreement response")
+        }
+        note("key exchange produced \(secret.count) bytes")
+        return secret
     }
 
     func tokenSession(_ session: TKTokenSession,
