@@ -16,18 +16,41 @@ func hex(_ data: Data) -> String { data.map { String(format: "%02x", $0) }.joine
 
 let filter = CommandLine.arguments.dropFirst().first
 
-let query: [String: Any] = [
-    kSecClass as String: kSecClassKey,
-    kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
-    kSecReturnRef as String: true,
-    kSecReturnAttributes as String: true,
-    kSecMatchLimit as String: kSecMatchLimitAll,
-]
+// Two queries, because one is not enough and assuming otherwise cost a wrong
+// diagnosis: a *smart-card* token's keys live in the token access group and do
+// not come back from a plain keychain query, while a *persistent* token's
+// published items do. Searching only the default group finds the wireless token
+// and silently misses every card in a reader.
+func privateKeys(accessGroup: String?) -> [[String: Any]] {
+    var query: [String: Any] = [
+        kSecClass as String: kSecClassKey,
+        kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
+        kSecReturnRef as String: true,
+        kSecReturnAttributes as String: true,
+        kSecMatchLimit as String: kSecMatchLimitAll,
+    ]
+    if let accessGroup { query[kSecAttrAccessGroup as String] = accessGroup }
 
-var result: CFTypeRef?
-let status = SecItemCopyMatching(query as CFDictionary, &result)
-guard status == errSecSuccess, let items = result as? [[String: Any]] else {
-    print("no private keys in the keychain (status \(status))")
+    var result: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+          let found = result as? [[String: Any]] else { return [] }
+    return found
+}
+
+var seen = Set<String>()
+var items: [[String: Any]] = []
+for group in [nil, kSecAttrAccessGroupToken as String] {
+    for item in privateKeys(accessGroup: group) {
+        // kSecAttrApplicationLabel is the SHA-1 of the public key, so it
+        // identifies a key uniquely across both queries.
+        let identity = (item[kSecAttrApplicationLabel as String] as? Data)
+            .map { $0.map { String(format: "%02x", $0) }.joined() }
+            ?? UUID().uuidString
+        if seen.insert(identity).inserted { items.append(item) }
+    }
+}
+guard !items.isEmpty else {
+    print("no private keys in the keychain")
     exit(1)
 }
 
