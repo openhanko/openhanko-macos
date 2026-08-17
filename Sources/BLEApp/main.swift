@@ -16,7 +16,7 @@ import CryptoTokenKit
 import Security
 
 /// Must match com.apple.ctk.class-id in the extension's Info.plist.
-let tokenClassID = "dev.smartcard.bleapp.token"
+let tokenClassID = "io.openhanko.ble.token"
 
 /// The remembered device, so a later launch reconnects to the same one rather
 /// than to whatever is in range.

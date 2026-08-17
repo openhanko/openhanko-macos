@@ -5,13 +5,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>SmartCardToken</string>
+	<string>OpenHankoToken</string>
 	<key>CFBundleIdentifier</key>
-	<string>dev.smartcard.tokenapp.token</string>
+	<string>io.openhanko.app.token</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>SmartCardToken</string>
+	<string>OpenHankoToken</string>
 	<!-- App extensions are XPC bundles, not applications. -->
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
@@ -35,11 +35,11 @@
 				<string>F0534D43415244</string>
 			</array>
 			<key>com.apple.ctk.class-id</key>
-			<string>dev.smartcard.tokenapp.token</string>
+			<string>io.openhanko.app.token</string>
 			<!-- CryptoTokenKit instantiates this class by name; it is
 			     <SwiftModule>.<Class>, not NSExtensionPrincipalClass. -->
 			<key>com.apple.ctk.driver-class</key>
-			<string>SmartCardToken.TokenDriver</string>
+			<string>OpenHankoToken.TokenDriver</string>
 			<key>com.apple.ctk.token-type</key>
 			<string>smartcard</string>
 		</dict>

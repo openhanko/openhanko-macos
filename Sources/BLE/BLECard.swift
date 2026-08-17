@@ -43,7 +43,7 @@ final class BLECard: NSObject {
     /// the 9-byte base AID, and nothing in between.
     static let pivAID = Data([0xa0, 0x00, 0x00, 0x03, 0x08, 0x00, 0x00, 0x10, 0x00, 0x01, 0x00])
 
-    private let queue = DispatchQueue(label: "dev.smartcard.ble")
+    private let queue = DispatchQueue(label: "io.openhanko.ble")
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var apduCharacteristic: CBCharacteristic?

@@ -15,7 +15,7 @@ import CryptoTokenKit
 import Foundation
 import os
 
-private let log = Logger(subsystem: "dev.smartcard.bleapp.token", category: "driver")
+private let log = Logger(subsystem: "io.openhanko.ble.token", category: "driver")
 
 /// Errors are the only level that reaches `log show` without a live stream —
 /// info and debug stay in the memory-backed ring and vanish. Everything this

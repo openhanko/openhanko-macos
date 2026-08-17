@@ -5,13 +5,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>SmartCardBLEToken</string>
+	<string>OpenHankoBLEToken</string>
 	<key>CFBundleIdentifier</key>
-	<string>dev.smartcard.bleapp.token</string>
+	<string>io.openhanko.ble.token</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>SmartCardBLEToken</string>
+	<string>OpenHankoBLEToken</string>
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
@@ -34,9 +34,9 @@
 			     Apple's own PlatformSSOToken has the same pair and nothing
 			     else. -->
 			<key>com.apple.ctk.class-id</key>
-			<string>dev.smartcard.bleapp.token</string>
+			<string>io.openhanko.ble.token</string>
 			<key>com.apple.ctk.driver-class</key>
-			<string>SmartCardBLEToken.TokenDriver</string>
+			<string>OpenHankoBLEToken.TokenDriver</string>
 		</dict>
 	</dict>
 </dict>

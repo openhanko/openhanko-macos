@@ -12,8 +12,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP_NAME="SmartCardBLEApp"
-EXT_NAME="SmartCardBLEToken"
+APP_NAME="OpenHankoBLE"
+EXT_NAME="OpenHankoBLEToken"
 BUNDLE="build/${APP_NAME}.app"
 EXT_BUNDLE="${BUNDLE}/Contents/PlugIns/${EXT_NAME}.appex"
 DEPLOY_TARGET="macos13.0"

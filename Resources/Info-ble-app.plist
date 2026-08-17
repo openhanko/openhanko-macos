@@ -5,13 +5,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>SmartCardBLEApp</string>
+	<string>OpenHankoBLE</string>
 	<key>CFBundleIdentifier</key>
-	<string>dev.smartcard.bleapp</string>
+	<string>io.openhanko.ble</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>SmartCardBLEApp</string>
+	<string>OpenHankoBLE</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

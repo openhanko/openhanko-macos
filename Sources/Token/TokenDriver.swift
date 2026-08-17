@@ -18,7 +18,7 @@ import CryptoTokenKit
 import Foundation
 import os
 
-let log = Logger(subsystem: "dev.smartcard.token", category: "token")
+let log = Logger(subsystem: "io.openhanko.app.token", category: "token")
 
 /// Diagnostics for an extension you cannot attach a debugger to.
 ///
@@ -27,7 +27,7 @@ let log = Logger(subsystem: "dev.smartcard.token", category: "token")
 /// also appends to a file inside the sandbox container, which is the one
 /// channel that has proven reliable:
 ///
-///     tail -f ~/Library/Containers/dev.smartcard.tokenapp.token/Data/token.log
+///     tail -f ~/Library/Containers/io.openhanko.app.token/Data/token.log
 func note(_ message: String) {
     // Without .public the interpolation is redacted to <private> in the log.
     log.error("\(message, privacy: .public)")
@@ -162,12 +162,20 @@ final class TokenDriver: TKSmartCardTokenDriver, TKSmartCardTokenDriverDelegate 
         let objectID = "9a" as NSString
         let certificateItem = TKTokenKeychainCertificate(certificate: certificate,
                                                          objectID: objectID)
-        certificateItem?.label = "smart-card authentication"
+        // The certificate's own subject, not a fixed string. Devices name
+        // themselves after their key's fingerprint, and hardcoding a label here
+        // threw that away the moment this driver took over: the same card that
+        // reads "OpenHanko #FA764A" under Apple's pivtoken became an anonymous
+        // "smart-card authentication" under ours, and two devices on one Mac
+        // became indistinguishable.
+        let label = (SecCertificateCopySubjectSummary(certificate) as String?)
+            ?? "smart-card authentication"
+        certificateItem?.label = label
 
         guard let keyItem = TKTokenKeychainKey(certificate: certificate, objectID: objectID) else {
             throw CardError.malformedResponse("certificate carries no usable public key")
         }
-        keyItem.label = "smart-card authentication"
+        keyItem.label = label
         keyItem.canSign = true
         keyItem.canDecrypt = false
         keyItem.canPerformKeyExchange = false
@@ -184,7 +192,7 @@ final class TokenDriver: TKSmartCardTokenDriver, TKSmartCardTokenDriverDelegate 
         // Apple's header requires constraints to stay constant for the token's
         // lifetime. Changing the ID is how you get those contents rebuilt after
         // altering constraints; without it the old ones silently win.
-        let instanceID = certificateDER.sha256Hex + ".v2"
+        let instanceID = certificateDER.sha256Hex + ".v3"
 
         note("publishing key: canSign=\(keyItem.canSign) login=\(keyItem.isSuitableForLogin) constraints=\(keyItem.constraints ?? [:])")
 
