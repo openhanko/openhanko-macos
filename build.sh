@@ -33,7 +33,7 @@ mkdir -p "${BUNDLE}/Contents/MacOS" "${EXT_BUNDLE}/Contents/MacOS"
 echo "==> container app"
 swiftc Sources/App/main.swift \
     -target "arm64-apple-${DEPLOY_TARGET}" \
-    -framework AppKit \
+    -framework AppKit -framework CryptoTokenKit -framework Security \
     -O -o "${BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp Resources/Info-app.plist "${BUNDLE}/Contents/Info.plist"
 
