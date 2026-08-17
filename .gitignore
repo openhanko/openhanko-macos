@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+build/
+tools/authplugin/build/
+
+# compiled host binaries; build.sh and install.sh regenerate them
+tools/pam/smartcard-auth
+tools/pam/smartcard-auth-helper
+*.so
+*.o
