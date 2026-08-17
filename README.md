@@ -1,24 +1,37 @@
-# CryptoTokenKit token driver
+# openhanko-macos
 
-A macOS token driver for the device, replacing Apple's built-in `pivtoken`.
+The macOS side of [OpenHanko](https://openhanko.io): a CryptoTokenKit token
+driver that replaces Apple's built-in `pivtoken`, the app that carries it, and
+the PAM module that lets `sudo` use the device.
 
-It exists for two reasons, both of which are dead ends without it:
+The firmware lives in `openhanko-firmware`; the site in `openhanko-web`.
 
-1. **PIN entry.** Apple's `pivtoken` always collects the PIN in its own dialog,
-   and the device then types it over HID into whatever window holds focus —
-   which macOS frequently fails to give to its own authorization dialog. A
-   custom driver can hand CryptoTokenKit an `APDUTemplate`, which per Apple's
-   header "allows using hardware PINPad for secure PIN entry (provided that the
-   reader has one)". Our firmware implements `PC_to_RDR_Secure`, so the button
-   press becomes the PIN entry: no field, no keystrokes, nothing to focus.
+## Why a driver at all
 
-   The firmware declares `bPINSupport = 0x01` and implements
-   `PC_to_RDR_Secure`. Apple's `pivtoken` ignores that byte entirely; this
-   driver is what makes use of it.
+The device works on an untouched Mac without any of this — it answers the
+standard PIV AID and Apple's own `pivtoken` binds to it. This driver is the
+optional upgrade, and it exists for one reason:
 
-2. **Transport.** A token driver talks to whatever it likes. macOS has no
-   Bluetooth smart-card transport, so this is the only route to a wireless
-   version.
+**PIN entry.** Apple's `pivtoken` always collects the PIN in a dialog, and the
+device then types it over HID. A custom driver can hand CryptoTokenKit an
+`APDUTemplate`, which per Apple's header "allows using hardware PINPad for
+secure PIN entry (provided that the reader has one)". The firmware implements
+`PC_to_RDR_Secure` and declares `bPINSupport = 0x01`, which Apple's driver
+ignores entirely — so with this one installed the touch *is* the PIN entry: no
+field, no keystrokes, no dialog.
+
+
+## Building
+
+```
+./build.sh              build and sign into build/
+./build.sh install      also copy to /Applications and register the extension
+./package.sh 0.1.0      signed, notarised, stapled DMG for release
+```
+
+`package.sh` needs a notarytool profile: create one once with
+`xcrun notarytool store-credentials openhanko-notary --apple-id … --team-id …
+--password <app-specific>`, or point `NOTARY_PROFILE` at an existing one.
 
 ## Status
 
