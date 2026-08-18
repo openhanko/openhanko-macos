@@ -57,12 +57,10 @@ On the wire, 483 ms from the pinpad request to a completed signature:
 34626  APDU 00 87 11 9A  → 9000    signed
 ```
 
-Be clear about what this does and does not fix. The PIN **prompt** still
-appears, because it comes from `pam_smartcard.so`, upstream of CryptoTokenKit —
-pinpad only governs the CTK-to-card leg. The device still types `000000` to
-satisfy that prompt, so the "typed into whatever has focus" problem is
-unchanged. What is gained is that the typed digits no longer authenticate
-anything: the card only verifies when someone physically presses the button.
+Be clear about what this does and does not fix. Pinpad governs the
+CryptoTokenKit-to-card leg only. Anything that collects a PIN *before* CTK is
+consulted, or that puts up its own PIN field, never reaches it — see
+[what pinpad reaches](#what-pinpad-reaches) below.
 
 ## Build
 
@@ -202,7 +200,7 @@ silently dropped, and the host waits until it times out.
 Fixed by not sending that initial extension at all; the periodic tick sends the
 first one a second later, by which time the endpoint is free.
 
-## Pinpad works — but `sudo` does not use it
+## Pinpad, and how far it reaches
 
 This took three experiments to get right, and the obvious conclusion was wrong.
 
@@ -220,17 +218,29 @@ Signing through the Security framework with **no PAM in the path** (see
 **No PIN dialog, nothing typed, authenticated by the button alone.** That is
 what a pinpad reader is for, and CryptoTokenKit does it correctly.
 
-`sudo` behaves differently, and the difference is PAM, not CryptoTokenKit:
+### What pinpad reaches
 
-| path | who collects the PIN | pinpad used? | dialog? |
+Pinpad only governs the leg between CryptoTokenKit and the card. Whether you see
+a PIN field depends on who collects it first:
+
+| path | who collects the PIN | pinpad used? | PIN field? |
 | --- | --- | --- | --- |
-| `sudo` | `pam_smartcard`, before CTK is consulted | no | yes, and the PIN is typed |
+| `sudo`, with `tools/pam` installed | CryptoTokenKit | **yes** | **none** |
+| `sudo`, stock | `pam_smartcard`, before CTK is consulted | no | yes, on the TTY |
 | Security framework / SecKey | CryptoTokenKit | **yes** | **none** |
+| apps with their own PIN UI, e.g. Chrome | the application | no | yes |
 
-So `pam_smartcard` prompts on the TTY and hands the PIN to the token as a
-pre-filled value, which is why the token never gets to ask the reader. Anything
-going through `SecKeyCreateSignature` — browser client certificates, SSH via
-CTK, code signing — gets the pinpad path with no typing at all.
+`sudo` is seamless once `tools/pam` is installed, and that is the reason the
+module exists: `pam_smartcard.so` does not link CryptoTokenKit and has no pinpad
+path, so it prompts on the TTY and hands the token a pre-filled PIN. Our module
+runs ahead of it as `sufficient` and authenticates through CTK instead, which
+puts the press back in charge. Measured: a `sudo` trace shows `CCID 69 Secure`,
+the press, and the signature, with no `VERIFY` in it at all.
+
+Applications that present their own PIN field are the remaining gap. Chrome's
+password manager unlocks correctly but still shows a modal, and the device types
+`000000` into it. Nothing in the token driver can change that — the application
+never asks CryptoTokenKit to authenticate, so the reader is never consulted.
 
 ### Driving the reader must be explicit
 
