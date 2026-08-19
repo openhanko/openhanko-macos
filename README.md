@@ -398,7 +398,10 @@ be authenticated by presence. GUI authorization prompts cannot, by construction.
 
 ## Open questions
 
-- Does smart-card **login** work with a third-party token? `TKTokenKeychainKey`
-  has `isSuitableForLogin`, which is set here, but it is untested.
-- Can the driver drop the HID PIN typing entirely? The prompt comes from PAM,
-  so probably not without a host-side helper.
+- How much of the keychain does slot 9D actually gate? A screen unlock produces
+  one ECDH on 9D, but re-unlocking a login keychain that has since auto-locked
+  produces no card traffic at all — macOS goes straight to the password there.
+  Which operations take the card route is not mapped.
+- Can the PIN typing be dropped for applications that present their own PIN
+  field, like Chrome? Nothing in a token driver is consulted on that path, so
+  probably not from here.
