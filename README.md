@@ -239,7 +239,7 @@ the press, and the signature, with no `VERIFY` in it at all.
 
 Applications that present their own PIN field are the remaining gap. Chrome's
 password manager unlocks correctly but still shows a modal, and the device types
-`000000` into it. Nothing in the token driver can change that — the application
+six random digits into it. Nothing in the token driver can change that — the application
 never asks CryptoTokenKit to authenticate, so the reader is never consulted.
 
 ### Driving the reader must be explicit
