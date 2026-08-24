@@ -20,7 +20,11 @@ enum DeviceState {
         switch self {
         case .noDevice:   return "No device connected"
         case .driverless: return "Connected — driverless mode"
-        case .pinpad:     return "Connected — press to authenticate"
+                // Just "Connected". It used to append what to do next, which reads as an
+        // instruction the moment you look at the window — but this line is shown
+        // whenever the device is present, not only when something is waiting on
+        // it, so it told people to touch the sensor when nothing had asked.
+        case .pinpad:     return "Connected"
         }
     }
 
@@ -30,15 +34,19 @@ enum DeviceState {
             return """
             Plug in your OpenHanko. macOS will offer to pair it the first time, \
             and it works on any Mac with nothing installed.
+
+            A new device needs a fingerprint before it can pair. The ring breathes \
+            purple while it waits for one; touch the sensor twice with the same \
+            finger, then unplug and reconnect to pair.
             """
         case .driverless(let name):
             return """
             \(name)
 
             macOS is using its built-in smart card driver, so you will be asked \
-            for a PIN — pressing the button types it for you.
+            for a PIN — touching the sensor types it for you.
 
-            Unplug and plug the device back in to switch it to press-only mode \
+            Unplug and plug the device back in to switch it to touch-only mode \
             now that this driver is installed.
             """
         case .pinpad(let name):
@@ -89,6 +97,12 @@ func describe(tokenID: String) -> String {
     return "Paired device"
 }
 
+enum Layout {
+    /// Width of the wrapping text, inside the window's padding.
+    static let textWidth: CGFloat = 380
+    static let padding: CGFloat = 24
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private let headline = NSTextField(labelWithString: "")
@@ -102,10 +116,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                               backing: .buffered, defer: false)
         window.title = "OpenHanko"
 
-        let title = NSTextField(labelWithString: "OpenHanko")
-        title.font = .systemFont(ofSize: 22, weight: .semibold)
-
-        headline.font = .systemFont(ofSize: 13, weight: .medium)
+        // No "OpenHanko" heading: the title bar already says it, and repeating it
+        // pushed everything else down to make room for a word the user just read.
+        headline.font = .systemFont(ofSize: 15, weight: .semibold)
         dot.font = .systemFont(ofSize: 13)
 
         let status = NSStackView(views: [dot, headline])
@@ -114,35 +127,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
-        detail.preferredMaxLayoutWidth = 400
+        detail.preferredMaxLayoutWidth = Layout.textWidth
 
-        // Worth saying outright. The driver is a system extension and has
-        // nothing to do with this window: closing it quits this app and changes
-        // nothing about whether the key works. Without that sentence people
-        // reasonably assume it has to stay running, and leave it in the Dock
-        // forever.
-        let hint = NSTextField(wrappingLabelWithString:
-            "The driver is part of macOS once installed, and works whether or not "
-            + "this window is open. You can close it — nothing will reopen it, and "
-            + "the key keeps working. Open OpenHanko again any time you want to "
-            + "check on it.")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .tertiaryLabelColor
+        // The one thing a person opening this window most needs told, so it is
+        // set like a statement rather than a footnote. It was tertiary grey at
+        // 11pt — the faintest, smallest text on screen — which is the opposite
+        // of what it deserved.
+        let closable = NSTextField(labelWithString: "You can close this window.")
+        closable.font = .systemFont(ofSize: 13, weight: .medium)
 
-        let stack = NSStackView(views: [title, status, detail, hint])
+        let closableWhy = NSTextField(wrappingLabelWithString:
+            "The driver is part of macOS once installed and keeps working on its "
+            + "own. Nothing will reopen this window; open OpenHanko again whenever "
+            + "you want to check on things.")
+        closableWhy.font = .systemFont(ofSize: 12)
+        closableWhy.textColor = .secondaryLabelColor
+        closableWhy.preferredMaxLayoutWidth = Layout.textWidth
+
+        let rule = NSBox()
+        rule.boxType = .separator
+
+        let stack = NSStackView(views: [status, detail, rule, closable, closableWhy])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 14
-        stack.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
+        stack.spacing = 12
+        stack.edgeInsets = NSEdgeInsets(top: Layout.padding, left: Layout.padding,
+                                        bottom: Layout.padding, right: Layout.padding)
+        // The separator is the only thing that should span the width; everything
+        // else is left-aligned text.
+        // preferredMaxLayoutWidth alone only tells a label where to wrap; it does
+        // not stop the stack widening to fit a long unbroken run, and the text
+        // then overflowed the insets — visibly wider than the separator below it.
+        // Pinning the width makes the inset real.
+        for label in [detail, closableWhy] {
+            label.widthAnchor.constraint(equalToConstant: Layout.textWidth).isActive = true
+        }
+
+        stack.setCustomSpacing(20, after: detail)
+        stack.setCustomSpacing(16, after: rule)
+        stack.setCustomSpacing(4, after: closable)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         window.contentView?.addSubview(stack)
         if let content = window.contentView {
+            // Pinned on all four edges, bottom included. Without the bottom the
+            // window kept whatever height it was created with and left a band of
+            // empty space below the text.
             NSLayoutConstraint.activate([
                 stack.topAnchor.constraint(equalTo: content.topAnchor),
                 stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                 stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+                rule.widthAnchor.constraint(equalToConstant: Layout.textWidth),
             ])
+            content.layoutSubtreeIfNeeded()
+            window.setContentSize(content.fittingSize)
         }
 
         window.center()

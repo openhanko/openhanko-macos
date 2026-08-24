@@ -485,13 +485,19 @@ final class TokenSession: TKSmartCardTokenSession, TKTokenSessionDelegate {
             // the card politely asked for more time. There is nothing to wait
             // for, so say so and stop.
             note("card reports no fingerprint enrolled; refusing without a PIN request")
+            // Everything goes in the description. macOS renders that key inline in
+            // its own sentence and discards the recovery suggestion entirely, so a
+            // next step left there is a next step nobody reads.
+            //
+            // The reconnect matters and is not guessable: macOS only offers to pair
+            // when a card is inserted, so enrolling while it sits in the port
+            // leaves the user with no way back to this dialog short of sc_auth.
             throw NSError(domain: TKErrorDomain, code: TKError.Code.canceledByUser.rawValue,
                           userInfo: [
                 NSLocalizedDescriptionKey:
-                    "No fingerprint is enrolled on this OpenHanko.",
-                NSLocalizedRecoverySuggestionErrorKey:
-                    "The ring breathes purple when it is waiting for one. Touch the "
-                    + "sensor twice with the same finger to enrol it, then pair again.",
+                    "No fingerprint is enrolled on this OpenHanko. The ring breathes "
+                    + "purple while it waits for one — touch the sensor twice with the "
+                    + "same finger, then unplug the device and plug it back in to pair.",
             ])
         }
 
