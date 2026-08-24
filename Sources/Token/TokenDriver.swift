@@ -7,7 +7,7 @@
 //      to hold focus. A custom driver can hand CryptoTokenKit an APDUTemplate,
 //      which per Apple's own header "allows using hardware PINPad for secure PIN
 //      entry (provided that the reader has one)" — and our reader has one. Then
-//      the button press *is* the PIN entry: no field, no keystrokes, no focus.
+//      the fingerprint *is* the PIN entry: no field, no keystrokes, no focus.
 //
 //   2. Transport. A token driver talks to whatever it likes, which is the only
 //      route to a wireless version, since macOS has no Bluetooth smart-card
@@ -181,7 +181,7 @@ final class TokenDriver: TKSmartCardTokenDriver, TKSmartCardTokenDriverDelegate 
         keyItem.canDecrypt = false
         keyItem.canPerformKeyExchange = false
         keyItem.isSuitableForLogin = true
-        // Every use of this key costs a button press on the device. Saying so
+        // Every use of this key costs a fingerprint on the device. Saying so
         // here is what makes macOS ask us to authenticate before each signature
         // rather than caching one authentication forever.
         keyItem.constraints = [NSNumber(value: TKTokenOperation.signData.rawValue): TokenSession.pinConstraint]
@@ -224,7 +224,7 @@ final class TokenDriver: TKSmartCardTokenDriver, TKSmartCardTokenDriverDelegate 
                 managementKey.isSuitableForLogin = false
                 // Unconstrained on purpose. This key is used while macOS opens
                 // the login keychain immediately after a login the user already
-                // authorised with a press; asking again there reads as broken.
+                // authorised with a touch; asking again there reads as broken.
                 keychainItems.append(managementKey)
                 note("publishing slot 9D for key agreement")
             }
@@ -274,7 +274,7 @@ final class TokenSession: TKSmartCardTokenSession, TKTokenSessionDelegate {
     static let pinConstraint = "pin" as NSString
 
     /// PIN presentation rules. The device ignores the digits entirely — the
-    /// button press is the real authorization — but the format still has to be
+    /// fingerprint is the real authorization — but the format still has to be
     /// declared so the reader and the host agree on the block layout.
     private func pinFormat() -> TKSmartCardPINFormat {
         let format = TKSmartCardPINFormat()
@@ -321,7 +321,7 @@ final class TokenSession: TKSmartCardTokenSession, TKTokenSessionDelegate {
         // This does not remove the PIN prompt: macOS collects a PIN from the
         // user regardless, in PAM for sudo and in SecurityAgent for GUI
         // authorization. What it buys is that the typed digits no longer
-        // authenticate anything — the card only verifies on a physical press.
+        // authenticate anything — the card only verifies on a fingerprint.
         if card.userInteractionForSecurePINVerification(format, apdu: template,
                                                         pinByteOffset: 5) != nil {
             note("reader supports secure PIN entry; deferring to the pinpad")

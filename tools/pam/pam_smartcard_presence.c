@@ -1,9 +1,9 @@
-// PAM module: authenticate by pressing the button on a paired smart card.
+// PAM module: authenticate with a fingerprint on a paired smart card.
 //
 // Apple's pam_smartcard.so prompts "Enter PIN for '%s': " and types the PIN over
 // the keyboard, because it does not link CryptoTokenKit and has no pinpad path.
 // This module goes through CryptoTokenKit instead, so the token driver performs
-// the authentication — for this device, a press on the reader.
+// the authentication — for this device, a fingerprint on the reader.
 //
 // Install as `auth sufficient` so a failure falls through to the existing
 // password stack rather than locking anyone out:

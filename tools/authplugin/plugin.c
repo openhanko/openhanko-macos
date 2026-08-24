@@ -1,4 +1,4 @@
-// Authorization plugin: satisfy a GUI authorization prompt with a button press.
+// Authorization plugin: satisfy a GUI authorization prompt with device presence.
 //
 // macOS has three separate authentication paths, and they need three different
 // answers:

@@ -10,7 +10,7 @@ int main(int argc, char **argv) {
     const char *username = argc > 1 ? argv[1] : getlogin();
     if (!username) { fprintf(stderr, "cannot determine username\n"); return 2; }
 
-    printf("authenticating %s (press the button when the reader asks)\n", username);
+    printf("authenticating %s (touch the sensor when the reader asks)\n", username);
     switch (token_authenticate(username, print_log)) {
         case TOKEN_AUTH_OK:       printf("OK\n");                       return 0;
         case TOKEN_AUTH_NO_TOKEN: printf("no paired card available\n"); return 2;

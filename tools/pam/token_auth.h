@@ -4,7 +4,7 @@
 
 // Authenticates `username` by proving possession of a smart-card key paired to
 // them, with no PIN: the token driver handles authentication, which for this
-// device means a button press on the reader.
+// device means a fingerprint on the reader.
 //
 // Returns one of:
 typedef enum {

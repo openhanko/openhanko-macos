@@ -97,7 +97,7 @@ for item in tokenKeys {
     let message = Data("token signing test".utf8)
     let digest = Data(SHA256.hash(data: message))
 
-    print("  signing with \(algorithm.rawValue) — press the button if the device is waiting")
+    print("  signing with \(algorithm.rawValue) — touch the sensor if the device is waiting")
     let started = Date()
 
     var signError: Unmanaged<CFError>?

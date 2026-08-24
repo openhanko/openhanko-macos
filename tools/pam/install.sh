@@ -37,7 +37,7 @@ else
     fi
     # Must come before pam_smartcard/pam_opendirectory, which sudo_local already
     # does: /etc/pam.d/sudo includes it as its first auth line.
-    printf '# smart-card presence: press the button instead of typing a PIN.\n%s\n' \
+    printf '# smart-card presence: touch the sensor instead of typing a PIN.\n%s\n' \
         "${LINE}" >> "${LOCAL}"
     echo "==> added to ${LOCAL}"
 fi

@@ -26,7 +26,7 @@ cd "$(dirname "$0")"
 #
 #   2. It locked a machine out. The mechanism sits in the *shared* `authenticate`
 #      right, which the lock screen evaluates. Every unlock attempt ran it first,
-#      where it blocked for up to 20 seconds waiting for a button press before
+#      where it blocked for up to 20 seconds waiting on device presence before
 #      falling through — so a correct password came back "incorrect", and Touch
 #      ID was rejected too. Recovery needed a reboot, because the initial login
 #      window uses system.login.console, which this does not touch.

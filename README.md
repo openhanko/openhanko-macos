@@ -36,8 +36,8 @@ field, no keystrokes, no dialog.
 ## Status
 
 **Working end to end, with hardware pinpad PIN entry.** `sudo` authenticates
-against the device with a single button press, and the PIN is verified by
-pressing the button rather than by the digits typed.
+against the device with a single fingerprint, and the PIN is verified by that
+match rather than by the digits typed.
 
 ```
 sign 32 bytes with PIV algorithm 11
@@ -53,9 +53,17 @@ On the wire, 483 ms from the pinpad request to a completed signature:
 ```
 34137  APDU 00 87 11 9A  → 6982    first attempt, refused
 34143  CCID 69 Secure               macOS delegates PIN entry to the reader
-34147  EVENT BUTTON                 answered by the press
+34147  EVENT BUTTON                 presence
 34626  APDU 00 87 11 9A  → 9000    signed
 ```
+
+Every device trace in this file is an original, captured on the RP2040
+development build where presence came from a button rather than a finger —
+hence `EVENT BUTTON` throughout, and a signature that takes 469 of those 483 ms.
+They are kept as taken rather than restaged, because what each one was recorded
+to show is the host side of the exchange, and nothing there changed when the
+sensor replaced the button. A current unit emits `EVENT FINGER` and signs in
+196 ms.
 
 Be clear about what this does and does not fix. Pinpad governs the
 CryptoTokenKit-to-card leg only. Anything that collects a PIN *before* CTK is
@@ -191,9 +199,9 @@ onto `TKErrorCodeAuthenticationNeeded`.
 ### Answering a pinpad request too quickly drops the answer
 
 The firmware used to send a CCID time extension the instant
-`PC_to_RDR_Secure` arrived. That is fine when a human takes seconds to press the
-button, but once one press was made to satisfy both the PIN prompt and the
-pinpad request, the real answer went out ~4 ms later — while the first bulk IN
+`PC_to_RDR_Secure` arrived. That is fine when a human takes seconds to answer,
+but once a single act of presence satisfied both the PIN prompt and the pinpad
+request, the real answer went out ~4 ms later — while the first bulk IN
 transfer was still in flight. `usbd_edpt_xfer` fails in that case, the answer is
 silently dropped, and the host waits until it times out.
 
@@ -211,11 +219,11 @@ Signing through the Security framework with **no PAM in the path** (see
 9663    APDU 00 87 11 9A  → 6982     sign refused
 9671    APDU 00 A4 04 00  → 6a82     beginAuth ran
 129680  CCID 69 Secure                pinpad request — no dialog shown
-132171  EVENT BUTTON                  the press
+132171  EVENT BUTTON                  presence
 132648  APDU 00 87 11 9A  → 9000     signed
 ```
 
-**No PIN dialog, nothing typed, authenticated by the button alone.** That is
+**No PIN dialog, nothing typed, authenticated by presence alone.** That is
 what a pinpad reader is for, and CryptoTokenKit does it correctly.
 
 ### What pinpad reaches
@@ -234,8 +242,8 @@ a PIN field depends on who collects it first:
 module exists: `pam_smartcard.so` does not link CryptoTokenKit and has no pinpad
 path, so it prompts on the TTY and hands the token a pre-filled PIN. Our module
 runs ahead of it as `sufficient` and authenticates through CTK instead, which
-puts the press back in charge. Measured: a `sudo` trace shows `CCID 69 Secure`,
-the press, and the signature, with no `VERIFY` in it at all.
+puts the device back in charge. Measured: a `sudo` trace shows `CCID 69 Secure`,
+presence, and the signature, with no `VERIFY` in it at all.
 
 Applications that present their own PIN field are the remaining gap. Chrome's
 password manager unlocks correctly but still shows a modal, and the device types
@@ -250,24 +258,27 @@ the template is ignored, no `PC_to_RDR_Secure` is sent, and `PIN` arrives
 populated. Calling `userInteractionForSecurePINVerification` from the auth
 operation's `finish()` is what actually reaches the reader.
 
-### The device needs a way to say "press me"
+### The device needs a way to say "touch me"
 
 With pinpad there is no on-screen prompt at all, so a device with no indicator
-leaves the user with nothing to react to. The RP2040 build drives a WS2812 on
-GP16 that breathes only while a pinpad request is outstanding:
+leaves the user with nothing to react to. The firmware breathes an indicator
+only while a pinpad request is outstanding:
 
 ```
 33313  CCID 69 Secure           pinpad request — LED starts breathing
-39123  EVENT BUTTON             pressed 5.8 s later
+39123  EVENT BUTTON             answered 5.8 s later
 39589  APDU 00 87 11 9A → 9000  signed
 ```
 
 No dialog, nothing typed, and no instructions needed — the light is the prompt.
+On a production unit that light is the fingerprint module's own ring, which is
+also the surface being touched, so the invitation and the control are the same
+object. The development board used a discrete WS2812 for it.
 
 ## Authenticating a user without a PIN
 
 `tools/pam/smartcard-auth.c` authenticates a user by proving possession of a
-smart-card key paired to them — no PIN, just a press:
+smart-card key paired to them — no PIN, just a finger:
 
 ```
 $ ./tools/pam/smartcard-auth
@@ -279,7 +290,7 @@ vden has 3 paired identity(ies)
 
 ```
 517141  CCID 69 Secure               pinpad request, LED breathing
-526268  EVENT BUTTON                 the press
+526268  EVENT BUTTON                 presence
 526735  APDU 00 87 11 9A → 9000     signed and verified
 ```
 
@@ -299,12 +310,12 @@ The check is a challenge-response:
 
 Step 2 stops another card authenticating as you; step 3 stops a replay; and
 `piv.c` clears the PIN-verified window after every signature, so each
-authentication costs exactly one press.
+authentication costs exactly one fingerprint.
 
 ### The PAM module
 
 `tools/pam/` builds this into a PAM module. Installed, `sudo` authenticates by
-pressing the button — **no PIN prompt at all**:
+touching the sensor — **no PIN prompt at all**:
 
 ```sh
 ./tools/pam/build.sh
@@ -346,7 +357,7 @@ auth  required  pam_opendirectory.so use_first_pass nullok
 which means **SecurityAgent collects the credential before the PAM stack runs**.
 For `sudo`, PAM did the prompting, so replacing the module removed the prompt.
 For GUI authorization the prompt happens upstream of PAM entirely, so adding a
-module there would add a button press *after* the PIN rather than replacing it.
+module there would add a touch *after* the PIN rather than replacing it.
 
 ### GUI prompts cannot be covered at all on macOS 26
 
@@ -382,7 +393,7 @@ screen**:
 - The mechanism sat in the *shared* `authenticate` right, which the lock screen
   evaluates.
 - Every unlock attempt ran it first, where it blocked for up to 20 seconds
-  waiting for a button press before falling through.
+  waiting for the device to signal presence before falling through.
 - A correct password came back "incorrect"; Touch ID was rejected too. Recovery
   required a reboot, because the initial login window uses
   `system.login.console`, which the plugin does not touch.
