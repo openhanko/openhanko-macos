@@ -48,22 +48,8 @@ secure PIN verification: success=true sw=9000
 signature 72 bytes
 ```
 
-On the wire, 483 ms from the pinpad request to a completed signature:
-
-```
-34137  APDU 00 87 11 9A  → 6982    first attempt, refused
-34143  CCID 69 Secure               macOS delegates PIN entry to the reader
-34147  EVENT BUTTON                 presence
-34626  APDU 00 87 11 9A  → 9000    signed
-```
-
-Every device trace in this file is an original, captured on the RP2040
-development build where presence came from a button rather than a finger —
-hence `EVENT BUTTON` throughout, and a signature that takes 469 of those 483 ms.
-They are kept as taken rather than restaged, because what each one was recorded
-to show is the host side of the exchange, and nothing there changed when the
-sensor replaced the button. A current unit emits `EVENT FINGER` and signs in
-196 ms.
+On the wire that is four exchanges: a signature refused with `6982`, the
+`PC_to_RDR_Secure` macOS sends in response, the fingerprint, and the signature.
 
 Be clear about what this does and does not fix. Pinpad governs the
 CryptoTokenKit-to-card leg only. Anything that collects a PIN *before* CTK is
@@ -214,14 +200,9 @@ This took three experiments to get right, and the obvious conclusion was wrong.
 
 Signing through the Security framework with **no PAM in the path** (see
 `sign.swift` in the commit history, or any app doing client-certificate auth):
-
-```
-9663    APDU 00 87 11 9A  → 6982     sign refused
-9671    APDU 00 A4 04 00  → 6a82     beginAuth ran
-129680  CCID 69 Secure                pinpad request — no dialog shown
-132171  EVENT BUTTON                  presence
-132648  APDU 00 87 11 9A  → 9000     signed
-```
+the card is refused with `6982`, `beginAuth` runs — visible as a failed SELECT
+of the standard AID, `6a82` — a pinpad request arrives with no dialog on screen,
+and the signature completes on a fingerprint.
 
 **No PIN dialog, nothing typed, authenticated by presence alone.** That is
 what a pinpad reader is for, and CryptoTokenKit does it correctly.
@@ -262,15 +243,9 @@ operation's `finish()` is what actually reaches the reader.
 
 With pinpad there is no on-screen prompt at all, so a device with no indicator
 leaves the user with nothing to react to. The firmware breathes an indicator
-only while a pinpad request is outstanding:
-
-```
-33313  CCID 69 Secure           pinpad request — LED starts breathing
-39123  EVENT BUTTON             answered 5.8 s later
-39589  APDU 00 87 11 9A → 9000  signed
-```
-
-No dialog, nothing typed, and no instructions needed — the light is the prompt.
+only while a pinpad request is outstanding, and it is the only thing telling the
+user that anything is waiting: no dialog, nothing typed, no instructions — the
+light is the prompt.
 On a production unit that light is the fingerprint module's own ring, which is
 also the surface being touched, so the invitation and the control are the same
 object. The development board used a discrete WS2812 for it.
@@ -286,12 +261,6 @@ vden has 3 paired identity(ies)
   9033F36E...: paired — challenging
   waiting for the reader...
   signature verified — vden authenticated
-```
-
-```
-517141  CCID 69 Secure               pinpad request, LED breathing
-526268  EVENT BUTTON                 presence
-526735  APDU 00 87 11 9A → 9000     signed and verified
 ```
 
 It exists because `pam_smartcard.so` cannot do this. That module links only
