@@ -116,8 +116,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         detail.textColor = .secondaryLabelColor
         detail.preferredMaxLayoutWidth = 400
 
+        // Worth saying outright. The driver is a system extension and has
+        // nothing to do with this window: closing it quits this app and changes
+        // nothing about whether the key works. Without that sentence people
+        // reasonably assume it has to stay running, and leave it in the Dock
+        // forever.
         let hint = NSTextField(wrappingLabelWithString:
-            "This window is only here to explain things. The driver runs on its own.")
+            "The driver is part of macOS once installed, and works whether or not "
+            + "this window is open. You can close it — nothing will reopen it, and "
+            + "the key keeps working. Open OpenHanko again any time you want to "
+            + "check on it.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .tertiaryLabelColor
 

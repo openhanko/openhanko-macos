@@ -473,6 +473,26 @@ final class TokenSession: TKSmartCardTokenSession, TKTokenSessionDelegate {
             // being ignored.
             note("card requires authentication; asking CryptoTokenKit for it")
             throw TKError(.authenticationNeeded)
+        } catch CardError.status(0x6985) {
+            // "Conditions of use not satisfied" — the device has a fingerprint
+            // sensor and nothing enrolled on it, so it cannot authorise anything
+            // for anybody yet.
+            //
+            // Deliberately *not* authenticationNeeded. That would send
+            // CryptoTokenKit into beginAuth and a secure-PIN request the device
+            // can never satisfy, which is how this used to end: either a retry
+            // storm, or a pairing dialog sitting with its buttons disabled while
+            // the card politely asked for more time. There is nothing to wait
+            // for, so say so and stop.
+            note("card reports no fingerprint enrolled; refusing without a PIN request")
+            throw NSError(domain: TKErrorDomain, code: TKError.Code.canceledByUser.rawValue,
+                          userInfo: [
+                NSLocalizedDescriptionKey:
+                    "No fingerprint is enrolled on this OpenHanko.",
+                NSLocalizedRecoverySuggestionErrorKey:
+                    "The ring breathes purple when it is waiting for one. Touch the "
+                    + "sensor twice with the same finger to enrol it, then pair again.",
+            ])
         }
 
         guard let dynamicResponse = TLV.value(of: 0x7c, in: response),
