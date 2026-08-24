@@ -473,6 +473,20 @@ final class TokenSession: TKSmartCardTokenSession, TKTokenSessionDelegate {
             // being ignored.
             note("card requires authentication; asking CryptoTokenKit for it")
             throw TKError(.authenticationNeeded)
+        } catch CardError.status(0x6983) {
+            // "Authentication method blocked" — the device found a different
+            // fingerprint module than the one it was set up with, and has shut
+            // itself down. Nothing a host can do reopens it.
+            note("card reports its fingerprint sensor has been changed")
+            throw NSError(domain: TKErrorDomain, code: TKError.Code.canceledByUser.rawValue,
+                          userInfo: [
+                NSLocalizedDescriptionKey:
+                    "This OpenHanko's fingerprint sensor is not the one it was set "
+                    + "up with, so it has stopped accepting anything. If the sensor "
+                    + "was not replaced deliberately, treat the device as tampered "
+                    + "with. Holding its button while plugging it in erases the key "
+                    + "and starts over.",
+            ])
         } catch CardError.status(0x6985) {
             // "Conditions of use not satisfied" — the device has a fingerprint
             // sensor and nothing enrolled on it, so it cannot authorise anything
