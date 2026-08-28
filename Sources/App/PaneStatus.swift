@@ -14,7 +14,9 @@ final class PaneStatus: Pane {
     private let detail = UI.body()
     private let name = UI.caption("")
     private let pairButton = NSButton()
+    private let testButton = NSButton()
     private let pairNote = UI.caption("")
+    private let testNote = UI.body()
 
     /// Pairing state, and the device it was established for.
     ///
@@ -35,16 +37,26 @@ final class PaneStatus: Pane {
         pairButton.action = #selector(pair)
         pairButton.isHidden = true
 
-        stack.setViews([status, name, detail, UI.separator(), pairButton, pairNote],
+        testButton.title = "Test Authentication"
+        testButton.bezelStyle = .rounded
+        testButton.target = self
+        testButton.action = #selector(testAuth)
+        testButton.isHidden = true
+
+        stack.setViews([status, name, detail, UI.separator(),
+                        UI.row([pairButton, testButton]), pairNote, testNote],
                        in: .leading)
         stack.setCustomSpacing(4, after: status)
         stack.setCustomSpacing(16, after: name)
         stack.setCustomSpacing(16, after: detail)
-        stack.setCustomSpacing(6, after: pairButton)
+        stack.setCustomSpacing(8, after: stack.views[4])
+        stack.setCustomSpacing(10, after: pairNote)
     }
 
     override func apply(_ status: DeviceStatus?, error: String?) {
+        testNote.stringValue = testNote.stringValue.isEmpty ? "" : testNote.stringValue
         guard let status else {
+            testButton.isHidden = true
             dot.textColor = .tertiaryLabelColor
             headline.stringValue = "No device connected"
             name.stringValue = ""
@@ -76,6 +88,10 @@ final class PaneStatus: Pane {
         // pair and then refuse every signature — which reads as the pairing
         // having failed.
         let pairable = status.hasIdentity && status.templateCount > 0
+        // Testing needs a key macOS can reach and a finger to authorise with,
+        // which is the same bar as pairing.
+        testButton.isHidden = !pairable
+
         guard pairable else {
             pairButton.isHidden = true
             pairNote.stringValue = ""
@@ -113,6 +129,22 @@ final class PaneStatus: Pane {
         case .unpaired:
             pairButton.isHidden = false
             pairNote.stringValue = "Runs sc_auth. macOS asks for your password."
+        }
+    }
+
+    /// Asks the card to sign something, which is the only honest way to answer
+    /// "is this working" without waiting for the lock screen to ask.
+    @objc private func testAuth() {
+        guard let status = DeviceAgent.shared.status else { return }
+        testButton.isEnabled = false
+        testButton.title = "Touch the sensor…"
+        testNote.stringValue = "The ring is breathing. Rest your finger on it."
+        AuthTest.run(deviceName: status.name) { [weak self] outcome in
+            guard let self else { return }
+            self.testButton.isEnabled = true
+            self.testButton.title = "Test Authentication"
+            self.testNote.stringValue = outcome.summary + "\n\n" + outcome.detail
+            self.testNote.textColor = outcome.ok ? .secondaryLabelColor : .systemRed
         }
     }
 
