@@ -1,10 +1,42 @@
 # openhanko-macos
 
 The macOS side of [OpenHanko](https://openhanko.io): a CryptoTokenKit token
-driver that replaces Apple's built-in `pivtoken`, the app that carries it, and
-the PAM module that lets `sudo` use the device.
+driver that replaces Apple's built-in `pivtoken`, the app that carries it and
+gives the device an interface, and the PAM module that lets `sudo` use it.
 
 The firmware lives in `openhanko-firmware`; the site in `openhanko-web`.
+
+## The app
+
+It has to exist — `pluginkit` only registers an extension that lives inside an
+application bundle — and for a long time that was all it did.
+
+Everything the device knows about itself has always been on its serial console,
+reachable only from a terminal. So the states that mattered most were the ones
+nobody could see. A sensor that had been swapped showed red on the ring and
+nothing else, which without the leaflet is a dead object. Adding a finger was a
+gesture performed blind. Changing the idle light took a firmware build and a
+signature.
+
+| | |
+| --- | --- |
+| **Status** | What is wrong, in words, and the one action that fixes it |
+| **Fingerprints** | Enrolment, narrated live from the device's own events |
+| **Settings** | The idle light, stored on the device |
+| **Diagnostics** | `TRACE`, sensor identity, and a one-click paste for support |
+| **Update** | Installs a signed image by copying it to the bootloader volume |
+
+`Sources/App/DeviceConsole.swift` is the console client — the same line protocol
+`provision.py` speaks. `DeviceAgent` owns exactly one connection to it, because
+four panes asking the device things at once produces replies to the wrong
+questions.
+
+**The app and `provision.py` cannot both hold the device.** macOS does not lock
+`cu.` devices, so two clients do not fail — they interleave, and a command
+answered by somebody else's `OK` is indistinguishable from the firmware
+misbehaving. The app claims the port with `TIOCEXCL`, which turns that into a
+plain "already in use" from whichever asks second. Closing the app's window
+quits it and releases the port.
 
 ## Why a driver at all
 
