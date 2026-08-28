@@ -37,7 +37,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSWindow(contentViewController: tabs)
         window.title = "OpenHanko"
         window.styleMask.insert(.miniaturizable)
-        window.setContentSize(NSSize(width: 500, height: 440))
+        // A preference, not an expectation. Under a tiling window manager —
+        // Amethyst, yabai — the window is whatever size its slot is, which is how
+        // this one came to be 1920 points wide with a 420-point column stranded
+        // against the left edge. The panes centre their column for that reason;
+        // asking for a size here only decides what happens without a tiler.
+        //
+        // minSize is kept below the text measure deliberately. Anything larger
+        // fights a tiler that wants a narrow column, and losing that argument
+        // looks like the window refusing to be managed.
+        window.setContentSize(NSSize(width: 560, height: 520))
+        window.minSize = NSSize(width: 400, height: 320)
+        window.setFrameAutosaveName("OpenHankoMain")
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

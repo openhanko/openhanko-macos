@@ -9,7 +9,7 @@ import AppKit
 
 final class PaneDiagnostics: Pane {
     private let fields = UI.column([], spacing: 4)
-    private let sensorLine = UI.mono("")
+    private let sensorLine = UI.monoBlock("")
     private let traceView = NSTextView()
     private let refreshButton = NSButton()
     private let copyButton = NSButton()

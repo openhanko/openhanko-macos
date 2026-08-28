@@ -44,6 +44,22 @@ enum UI {
         return label
     }
 
+    /// Monospaced and wrapping, for a line of the device's own output.
+    ///
+    /// The non-wrapping `mono` is right for a value in a two-column readout,
+    /// where the text is a word or two. It is wrong for anything the device
+    /// composes itself: the sensor's info line is a dozen key=value pairs and
+    /// ran off the side of the window, which is the one thing a fixed-width
+    /// layout is supposed to prevent.
+    static func monoBlock(_ text: String = "") -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: text)
+        label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        label.textColor = .secondaryLabelColor
+        label.preferredMaxLayoutWidth = textWidth
+        label.widthAnchor.constraint(equalToConstant: textWidth).isActive = true
+        return label
+    }
+
     static func separator() -> NSBox {
         let box = NSBox()
         box.boxType = .separator
@@ -93,10 +109,19 @@ class Pane: NSViewController {
                                         bottom: UI.padding, right: UI.padding)
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
+        // Centred rather than pinned left.
+        //
+        // The text column is a fixed measure, because a line of prose as wide as
+        // a display is unreadable — but a fixed column pinned to the left edge of
+        // a window someone has widened reads as a layout that failed, not as one
+        // that chose its width. Centring makes the same constraint look
+        // deliberate at every window size.
+        let leading = stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor)
+        leading.priority = .defaultHigh
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor),
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            leading,
             stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor),
         ])
         build()
