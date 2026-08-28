@@ -16,6 +16,15 @@ final class PaneStatus: Pane {
     private let pairButton = NSButton()
     private let pairNote = UI.caption("")
 
+    /// Pairing state, and the device it was established for.
+    ///
+    /// Cached because answering it means running sc_auth twice, which is not
+    /// something to do on a two-second poll. Re-asked when the device changes —
+    /// including a factory reset, which gives the device a new name along with
+    /// its new identity, so the name is a sound key.
+    private var pairState: Pairing.State = .unknown
+    private var pairCheckedFor: String?
+
     override func build() {
         dot.font = .systemFont(ofSize: 13)
         let status = UI.row([dot, headline], spacing: 6)
@@ -67,10 +76,44 @@ final class PaneStatus: Pane {
         // pair and then refuse every signature — which reads as the pairing
         // having failed.
         let pairable = status.hasIdentity && status.templateCount > 0
-        pairButton.isHidden = !pairable
-        pairNote.stringValue = pairable
-            ? "Runs sc_auth. macOS asks for your password."
-            : ""
+        guard pairable else {
+            pairButton.isHidden = true
+            pairNote.stringValue = ""
+            return
+        }
+
+        if pairCheckedFor != status.name {
+            pairCheckedFor = status.name
+            pairState = .unknown
+            Pairing.state(deviceName: status.name) { [weak self] state in
+                guard let self else { return }
+                self.pairState = state
+                self.showPairing()
+            }
+        }
+        showPairing()
+    }
+
+    /// The button is only there when pressing it would do something.
+    ///
+    /// Offering to pair a device that is already paired is worse than clutter:
+    /// it implies the setup did not take, and the honest answer was one sc_auth
+    /// call away the whole time.
+    private func showPairing() {
+        switch pairState {
+        case .unknown:
+            pairButton.isHidden = true
+            pairNote.stringValue = "Checking whether this Mac already trusts it…"
+        case .noIdentity:
+            pairButton.isHidden = true
+            pairNote.stringValue = "macOS has not read an identity from this device yet."
+        case .paired(let label):
+            pairButton.isHidden = true
+            pairNote.stringValue = "Paired with this Mac · \(label)"
+        case .unpaired:
+            pairButton.isHidden = false
+            pairNote.stringValue = "Runs sc_auth. macOS asks for your password."
+        }
     }
 
     @objc private func pair() {
@@ -83,6 +126,10 @@ final class PaneStatus: Pane {
             switch result {
             case .success(let message):
                 self.pairNote.stringValue = message
+                // Re-ask rather than assume: pairing that reported success and
+                // did not take is exactly the case this pane exists to notice.
+                self.pairCheckedFor = nil
+                DeviceAgent.shared.refresh()
             case .failure(let error):
                 self.pairNote.stringValue = "\(error)"
             }

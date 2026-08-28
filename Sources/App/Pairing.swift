@@ -58,6 +58,35 @@ enum Pairing {
         return hashes
     }
 
+    enum State {
+        case unknown
+        case noIdentity
+        case paired(String)
+        case unpaired(String)
+    }
+
+    /// Whether this device is already trusted by this account.
+    ///
+    /// Both halves are shell-outs, so this is not something to run on every
+    /// status poll — the caller caches it and re-asks when the device changes.
+    static func state(deviceName: String, completion: @escaping (State) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            let answer: State
+            let candidates = (try? identities()) ?? []
+            if candidates.isEmpty {
+                answer = .noIdentity
+            } else {
+                let chosen = candidates.first(where: { $0.label.contains(deviceName) })
+                    ?? candidates.first(where: { $0.label.lowercased().contains("authentication") })
+                    ?? candidates[0]
+                answer = pairedHashes().contains(chosen.hash)
+                    ? .paired(chosen.label)
+                    : .unpaired(chosen.label)
+            }
+            DispatchQueue.main.async { completion(answer) }
+        }
+    }
+
     /// Finds this device's identity and pairs it, prompting for a password.
     ///
     /// The privilege prompt is macOS's own, raised through osascript. An app that
