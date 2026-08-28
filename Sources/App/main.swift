@@ -15,10 +15,14 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
+    private var tabs: NSTabViewController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Menu.install(appName: "OpenHanko")
+
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
+        self.tabs = tabs
 
         func add(_ pane: NSViewController, _ title: String, _ symbol: String) {
             pane.title = title
@@ -55,6 +59,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         DeviceAgent.shared.startPolling()
+    }
+
+    /// View menu, ⌘1 to ⌘5.
+    @objc func selectPane(_ sender: NSMenuItem) {
+        guard let tabs, sender.tag < tabs.tabViewItems.count else { return }
+        tabs.selectedTabViewItemIndex = sender.tag
+    }
+
+    @objc func openWebsite(_ sender: Any?) {
+        if let url = URL(string: "https://openhanko.io") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // Closing the window is the expected end of a session — this is something to
