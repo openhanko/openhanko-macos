@@ -23,14 +23,13 @@ final class PaneSettings: Pane {
         let label = NSTextField(labelWithString: "Idle light")
         label.font = .systemFont(ofSize: 12, weight: .medium)
 
+        // One sentence. Why the ring has eight colours and no brightness is a
+        // fact about the sensor's protocol, and it belongs in the README — a
+        // person choosing a colour from a menu is not asking to be taught how
+        // the LED is wired.
         explanation.stringValue = """
             What the ring shows when the device has nothing to say — enough to \
             find it on a dark desk without being a nuisance in the room.
-
-            There is no brightness to set. The sensor's ring takes one bit per \
-            colour channel and no intensity, so the only dimmer is how many of \
-            the three are lit: blue alone is the quietest thing that is still \
-            visible, and white is all three. Off is also a choice.
             """
 
         stack.setViews([UI.row([label, popup], spacing: 12), note,
