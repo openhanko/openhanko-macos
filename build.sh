@@ -31,11 +31,24 @@ rm -rf build
 mkdir -p "${BUNDLE}/Contents/MacOS" "${EXT_BUNDLE}/Contents/MacOS"
 
 echo "==> container app"
-swiftc Sources/App/main.swift \
+# Every file in Sources/App, not just main.swift: the app grew from one window
+# into panes, a console client and a device agent, and a glob is one fewer thing
+# to forget when adding the next one.
+swiftc Sources/App/*.swift \
     -target "arm64-apple-${DEPLOY_TARGET}" \
     -framework AppKit -framework CryptoTokenKit -framework Security \
     -O -o "${BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp Resources/Info-app.plist "${BUNDLE}/Contents/Info.plist"
+
+# A signed firmware image, if one has been put here. The Update pane installs it
+# by copying to the bootloader's mass-storage volume; without it that pane says
+# so and does nothing. Kept out of the repository because it is a build artefact
+# signed with the project key, not source.
+if [ -f Resources/firmware.uf2 ]; then
+    mkdir -p "${BUNDLE}/Contents/Resources"
+    cp Resources/firmware.uf2 "${BUNDLE}/Contents/Resources/firmware.uf2"
+    echo "    bundled firmware.uf2 ($(du -h Resources/firmware.uf2 | cut -f1))"
+fi
 
 echo "==> token extension"
 # -module-name must match com.apple.ctk.driver-class in Info-ext.plist, since
