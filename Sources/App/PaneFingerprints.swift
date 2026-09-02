@@ -128,6 +128,12 @@ final class PaneFingerprints: Pane {
                 + "already knows — it refuses duplicates on purpose. Try a different finger.")
         case let l where l.hasPrefix("EVENT ENROLL_TIMEOUT"):
             say("The window closed before a finger arrived. Nothing was stored; start again.")
+        case let l where l.hasPrefix("EVENT FINGERPRINT_REJECTED"):
+            // Not part of the gesture, but worth saying while someone is looking:
+            // the device polls for matches throughout, so a finger it does not
+            // know gets refused here too, and silence would read as the sensor
+            // having missed the touch.
+            say("That finger is not one the device knows.")
         case let l where l.hasPrefix("EVENT MODULE_MISMATCH"):
             say("The device is refusing everything: this is not the sensor it was set up with.")
         case let l where l.hasPrefix("EVENT TOUCH"):
