@@ -9,14 +9,13 @@ The firmware lives in `openhanko-firmware`; the site in `openhanko-web`.
 ## The app
 
 It has to exist — `pluginkit` only registers an extension that lives inside an
-application bundle — and for a long time that was all it did.
+application bundle — and it is also where the device gets an interface.
 
-Everything the device knows about itself has always been on its serial console,
-reachable only from a terminal. So the states that mattered most were the ones
-nobody could see. A sensor that had been swapped showed red on the ring and
-nothing else, which without the leaflet is a dead object. Adding a finger was a
-gesture performed blind. Changing the idle light took a firmware build and a
-signature.
+Everything the device knows about itself is on its serial console, reachable
+only from a terminal. The states that matter most are the ones nobody would
+otherwise see: a sensor that has been swapped shows red on the ring and nothing
+else, adding a finger is a gesture performed blind, and the idle light is a
+device setting with nowhere to set it from.
 
 | | |
 | --- | --- |
@@ -28,7 +27,7 @@ signature.
 
 `Sources/App/DeviceConsole.swift` is the console client — the same line protocol
 `provision.py` speaks. `DeviceAgent` owns exactly one connection to it, because
-four panes asking the device things at once produces replies to the wrong
+five panes asking the device things at once produces replies to the wrong
 questions.
 
 **The app and `provision.py` cannot both hold the device.** macOS does not lock
@@ -52,33 +51,11 @@ secure PIN entry (provided that the reader has one)". The firmware implements
 ignores entirely — so with this one installed the touch *is* the PIN entry: no
 field, no keystrokes, no dialog.
 
-
-## Building
-
-```
-./build.sh              build and sign into build/
-./build.sh install      also copy to /Applications and register the extension
-./package.sh 0.1.0      signed, notarised, stapled DMG for release
-```
-
-`package.sh` needs a notarytool profile: create one once with
-`xcrun notarytool store-credentials openhanko-notary --apple-id … --team-id …
---password <app-specific>`, or point `NOTARY_PROFILE` at an existing one.
-
 ## Status
 
 **Working end to end, with hardware pinpad PIN entry.** `sudo` authenticates
 against the device with a single fingerprint, and the PIN is verified by that
 match rather than by the digits typed.
-
-```
-sign 32 bytes with PIV algorithm 11
-card requires authentication; asking CryptoTokenKit for it
-beginAuth for operation 2
-reader supports secure PIN entry; deferring to the pinpad
-secure PIN verification: success=true sw=9000
-signature 72 bytes
-```
 
 On the wire that is four exchanges: a signature refused with `6982`, the
 `PC_to_RDR_Secure` macOS sends in response, the fingerprint, and the signature.
@@ -92,16 +69,19 @@ consulted, or that puts up its own PIN field, never reaches it — see
 
 ```sh
 ./build.sh            # build and sign into build/
-./build.sh install    # also copy to /Applications and register
+./build.sh install    # also copy to /Applications and register the extension
+./package.sh 0.1.0    # signed, notarised, stapled DMG for release
 ```
 
 Assembled by hand rather than with an `.xcodeproj`. An app extension bundle is
 just an `Info.plist` and a Mach-O linked with `-e _NSExtensionMain`, which is
 easier to read and to keep in a repo than several thousand lines of `pbxproj`.
 
-Signing needs a **Developer ID Application** identity; `build.sh` picks the
-first one in the keychain, or set `CODESIGN_IDENTITY`. Ad-hoc signing is not
-enough.
+Signing needs a **Developer ID Application** identity; `build.sh` picks the first
+one in the keychain, or set `CODESIGN_IDENTITY`. Ad-hoc signing is not enough.
+`package.sh` additionally needs a notarytool profile: create one once with `xcrun
+notarytool store-credentials openhanko-notary --apple-id … --team-id … --password
+<app-specific>`, or point `NOTARY_PROFILE` at an existing one.
 
 ## Two things that will waste your afternoon
 
@@ -122,12 +102,12 @@ and they are exactly what the shipping EstEID token uses.
 enough, and neither is `pluginkit -a`. What actually works:
 
 ```sh
-lsregister -f /Applications/SmartCardTokenApp.app
-open /Applications/SmartCardTokenApp.app
+lsregister -f /Applications/OpenHanko.app
+open /Applications/OpenHanko.app
 ```
 
 Until then `pluginkit -m -p com.apple.ctk-tokens` simply does not list it, with
-no error anywhere. `pluginkit -m -A -D -vvv | grep -i smartcardtoken` shows
+no error anywhere. `pluginkit -m -A -D -vvv | grep -i openhanko` shows
 records that the filtered listing hides, which is the quickest way to tell
 "not registered" from "registered but not matching".
 
@@ -135,19 +115,22 @@ records that the filtered listing hides, which is the quickest way to tell
 
 | file | role |
 | --- | --- |
-| `Sources/Token/TokenDriver.swift` | driver, token, session — the whole implementation |
-| `Sources/App/main.swift` | container app; exists only so the extension can be registered |
-| `Resources/Info-ext.plist` | `com.apple.ctk.*` keys that make it a token driver |
+| `Sources/Token/TokenDriver.swift` | driver, token, session — the whole extension |
+| `Sources/App/DeviceConsole.swift` | serial client for the device's line protocol |
+| `Sources/App/DeviceAgent.swift` | sole owner of that connection; polling and event listening |
+| `Sources/App/Pane*.swift` | one file per pane, over the shared chrome in `UI.swift` |
+| `Resources/Info-ext.plist` | `com.apple.ctk.*` keys that make the extension a token driver |
 | `Resources/token.entitlements` | sandbox + smart-card |
 
 `Info-ext.plist` uses `com.apple.ctk.driver-class`, **not**
 `NSExtensionPrincipalClass`, and the value is the Swift-mangled
-`<Module>.<Class>` — hence `-module-name SmartCardToken` in the build script.
+`<Module>.<Class>` — hence `-module-name OpenHankoToken` in the build script.
 
-The driver claims the PIV AID `A000000308000010000100`, which Apple's `pivtoken`
-also claims. Which driver wins is the next thing to establish; if `pivtoken`
-takes precedence, the fallback is to give the applet a private AID so only this
-driver matches.
+**The driver claims the private AID `F0534D43415244`, not the standard PIV one.**
+Apple's `pivtoken` claims the standard AID, macOS binds exactly one driver per
+card at insertion, and claiming the same AID means racing it. A private AID makes
+the match unambiguous — and doubles as the probe the firmware uses to work out
+that this driver is installed at all, since nothing else knows to ask for it.
 
 ## Debugging an extension you cannot attach to
 
@@ -156,7 +139,7 @@ so early diagnosis here was entirely blind. Milestones now go through `note()`,
 which logs at error level and therefore persists:
 
 ```sh
-log show --last 5m --predicate 'subsystem == "dev.smartcard.token"' --style compact
+log show --last 5m --predicate 'subsystem == "io.openhanko.app.token"' --style compact
 ```
 
 Interpolated values need `privacy: .public` or they appear as `<private>`.
@@ -164,13 +147,12 @@ Interpolated values need `privacy: .public` or they appear as `<private>`.
 To watch live instead, which also catches CryptoTokenKit's own chatter:
 
 ```sh
-log stream --predicate 'process == "SmartCardToken"' --level debug --style compact
+log stream --predicate 'process == "OpenHankoToken"' --level debug --style compact
 ```
 
-That is how the decisive observation was made — CryptoTokenKit logging
-`'session:objectID:operation:data:algorithms:parameters:reply:'` and
-`sync req: 87 119a` with no preceding `beginAuth`, which is what showed
-authentication was being skipped rather than failing.
+CryptoTokenKit's own lines are the ones worth reading: `sync req: 87 119a` with
+no preceding `beginAuth` means authentication is being skipped rather than
+failing.
 
 Useful state checks, in rough order of trustworthiness:
 
@@ -178,8 +160,8 @@ Useful state checks, in rough order of trustworthiness:
 | --- | --- |
 | is the driver registered? | `system_profiler SPSmartCardsDataType` (look under SmartCard Drivers) |
 | which driver owns the card? | `sc_auth identities` — the `SmartCard:` line names the token |
-| is the extension actually running? | `pgrep -fl SmartCardToken.appex` |
-| did it crash? | `ls ~/Library/Logs/DiagnosticReports \| grep -i smartcard` |
+| is the extension actually running? | `pgrep -fl OpenHankoToken.appex` |
+| did it crash? | `ls ~/Library/Logs/DiagnosticReports \| grep -i openhanko` |
 
 `pluginkit -m -p com.apple.ctk-tokens` is the least reliable of these: it has
 listed nothing while `system_profiler` showed the driver present and working.
@@ -193,7 +175,7 @@ launch the app, then re-insert the card.
 
 ## The two non-obvious bugs
 
-Both cost hours, and neither produces a useful error.
+Neither produces a useful error.
 
 ### beginAuth is never called until the operation asks for it
 
@@ -201,9 +183,9 @@ Setting `TKTokenKeychainKey.constraints` is necessary but **not sufficient**.
 The constraint only declares that authentication is *possible*. CryptoTokenKit
 calls `sign` first regardless, and only calls `beginAuthForOperation` once that
 operation fails with **`TKErrorCodeAuthenticationNeeded`** specifically. Return
-any other error — as this driver did for a long while, propagating the card's
-`6982` as a generic failure — and the system gives up without ever asking,
-which looks exactly like the constraint being ignored.
+any other error — propagating the card's `6982` as a generic failure, say — and
+the system gives up without ever asking, which looks exactly like the constraint
+being ignored.
 
 ```swift
 } catch CardError.status(0x6982) {
@@ -216,23 +198,19 @@ onto `TKErrorCodeAuthenticationNeeded`.
 
 ### Answering a pinpad request too quickly drops the answer
 
-The firmware used to send a CCID time extension the instant
-`PC_to_RDR_Secure` arrived. That is fine when a human takes seconds to answer,
-but once a single act of presence satisfied both the PIN prompt and the pinpad
-request, the real answer went out ~4 ms later — while the first bulk IN
-transfer was still in flight. `usbd_edpt_xfer` fails in that case, the answer is
-silently dropped, and the host waits until it times out.
+A CCID time extension sent the instant `PC_to_RDR_Secure` arrives is fine when a
+human takes seconds to answer. It is not fine when one act of presence satisfies
+both the PIN prompt and the pinpad request: the real answer goes out ~4 ms later,
+while the first bulk IN transfer is still in flight. `usbd_edpt_xfer` fails, the
+answer is silently dropped, and the host waits until it times out.
 
-Fixed by not sending that initial extension at all; the periodic tick sends the
+The firmware therefore sends no initial extension; the periodic tick sends the
 first one a second later, by which time the endpoint is free.
 
 ## Pinpad, and how far it reaches
 
-This took three experiments to get right, and the obvious conclusion was wrong.
-
-Signing through the Security framework with **no PAM in the path** (see
-`sign.swift` in the commit history, or any app doing client-certificate auth):
-the card is refused with `6982`, `beginAuth` runs — visible as a failed SELECT
+Signing through the Security framework with **no PAM in the path** — any app
+doing client-certificate authentication — the card is refused with `6982`, `beginAuth` runs — visible as a failed SELECT
 of the standard AID, `6a82` — a pinpad request arrives with no dialog on screen,
 and the signature completes on a fingerprint.
 
@@ -255,13 +233,14 @@ a PIN field depends on who collects it first:
 module exists: `pam_smartcard.so` does not link CryptoTokenKit and has no pinpad
 path, so it prompts on the TTY and hands the token a pre-filled PIN. Our module
 runs ahead of it as `sufficient` and authenticates through CTK instead, which
-puts the device back in charge. Measured: a `sudo` trace shows `CCID 69 Secure`,
-presence, and the signature, with no `VERIFY` in it at all.
+puts the device back in charge: a `sudo` on that path carries `CCID 69 Secure`,
+presence and the signature, with no `VERIFY` in it at all.
 
 Applications that present their own PIN field are the remaining gap. Chrome's
 password manager unlocks correctly but still shows a modal, and the device types
-six random digits into it. Nothing in the token driver can change that — the application
-never asks CryptoTokenKit to authenticate, so the reader is never consulted.
+six random digits into it. Nothing in the token driver can change that: the
+application never asks CryptoTokenKit to authenticate, so the reader is never
+consulted.
 
 ### Driving the reader must be explicit
 
@@ -274,13 +253,11 @@ operation's `finish()` is what actually reaches the reader.
 ### The device needs a way to say "touch me"
 
 With pinpad there is no on-screen prompt at all, so a device with no indicator
-leaves the user with nothing to react to. The firmware breathes an indicator
-only while a pinpad request is outstanding, and it is the only thing telling the
-user that anything is waiting: no dialog, nothing typed, no instructions — the
-light is the prompt.
-On a production unit that light is the fingerprint module's own ring, which is
-also the surface being touched, so the invitation and the control are the same
-object. The development board used a discrete WS2812 for it.
+leaves the user with nothing to react to. The firmware flashes the ring blue
+while a pinpad request is outstanding, and that is the only thing telling the
+user anything is waiting: no dialog, nothing typed, no instructions — the light
+is the prompt. It is the fingerprint module's own ring, which is also the surface
+being touched, so the invitation and the control are the same object.
 
 ## Authenticating a user without a PIN
 
@@ -329,8 +306,8 @@ through to the existing password stack, and the module returns
 `PAM_AUTHINFO_UNAVAIL` for every condition except "a paired card was present and
 failed its challenge".
 
-**It must be fork+exec, not fork.** The first version forked and called
-OpenDirectory in the child, which crashes by design:
+**It must be fork+exec, not fork.** Calling OpenDirectory in a forked child
+crashes by design:
 
 ```
 objc[2603]: +[ODSession initialize] may have been in progress in another thread
@@ -341,8 +318,8 @@ OpenDirectory and Security are Objective-C underneath, and the runtime refuses
 to run after a fork without exec. The module therefore forks, drops to the
 invoking user, and execs `/usr/local/libexec/smartcard-auth-helper`. Dropping
 privileges is required anyway — token keys live in the user's CryptoTokenKit
-session, not root's — and the separate process means a crash cannot take `sudo`
-with it. That was proven the hard way: the child died and `sudo` still worked.
+session, not root's — and the separate process means a crash in the helper
+cannot take `sudo` with it.
 
 ### What it does not cover
 
@@ -362,11 +339,10 @@ module there would add a touch *after* the PIN rather than replacing it.
 
 ### GUI prompts cannot be covered at all on macOS 26
 
-An authorization plugin was built (`tools/authplugin/`) and is the right tool in
-principle: mechanisms placed ahead of `builtin:authenticate` can grant
-authorization before any UI appears. It was installed into the shared
-`authenticate` right and **was never invoked**, because nothing reaches that
-right any more.
+An authorization plugin (`tools/authplugin/`) is the right tool in principle:
+mechanisms placed ahead of `builtin:authenticate` can grant authorization before
+any UI appears. Installed into the shared `authenticate` right it is **never
+invoked**, because nothing reaches that right any more.
 
 Measured on macOS 26.6, unlocking Privacy & Security and Users & Groups:
 
@@ -399,11 +375,11 @@ screen**:
   required a reboot, because the initial login window uses
   `system.login.console`, which the plugin does not touch.
 
-The design returned `Undefined` rather than `Deny` specifically so failures would
-fall through to the password — and that part worked. The mistake was latency, not
-the return value. **Any mechanism in an authentication path must return
-promptly, always**, and a mechanism that waits on a human cannot live in a right
-the lock screen depends on.
+Returning `Undefined` rather than `Deny` is not enough to make this safe. The
+fall-through to the password worked exactly as designed, and the machine was
+locked out anyway, because the failure was latency. **Any mechanism in an
+authentication path must return promptly, always** — one that waits on a human
+cannot live in a right the lock screen depends on.
 
 **Net position:** `sudo` and anything going through `SecKeyCreateSignature` can
 be authenticated by presence. GUI authorization prompts cannot, by construction.
@@ -414,6 +390,3 @@ be authenticated by presence. GUI authorization prompts cannot, by construction.
   one ECDH on 9D, but re-unlocking a login keychain that has since auto-locked
   produces no card traffic at all — macOS goes straight to the password there.
   Which operations take the card route is not mapped.
-- Can the PIN typing be dropped for applications that present their own PIN
-  field, like Chrome? Nothing in a token driver is consulted on that path, so
-  probably not from here.
