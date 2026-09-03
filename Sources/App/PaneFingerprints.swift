@@ -129,6 +129,9 @@ final class PaneFingerprints: Pane {
     private var cursor = 0
     private var gated = false
     private var watching = false
+    /// How the last run ended, or nil if none has. Decides what the button
+    /// offers, so a finished run always has a way out of the state it left.
+    private var lastRun: Bool?
 
     override func build() {
         startButton.title = "Add a Fingerprint"
@@ -136,16 +139,22 @@ final class PaneFingerprints: Pane {
         startButton.target = self
         startButton.action = #selector(start)
 
-        stack.setViews([headline, count, intro, startButton,
-                        divider, steps, result], in: .leading)
+        // The button goes last, under the steps rather than over them.
+        //
+        // A run that fails leaves the reader at the bottom of a red row with
+        // nothing beneath it, and the way out sitting above the rule where the
+        // eye has already been. Putting the button after the outcome means the
+        // recovery is where the problem is. Before any run there are no steps
+        // and no rule, so it lands directly under the intro regardless.
+        stack.setViews([headline, count, intro,
+                        divider, steps, result, startButton], in: .leading)
         stack.setCustomSpacing(4, after: headline)
         stack.setCustomSpacing(14, after: count)
         stack.setCustomSpacing(16, after: intro)
-        stack.setCustomSpacing(16, after: startButton)
+        stack.setCustomSpacing(16, after: divider)
         stack.setCustomSpacing(14, after: steps)
+        stack.setCustomSpacing(16, after: result)
 
-        // Nothing below the button until there is something to show. An empty
-        // rule with a gap under it reads as a pane that failed to load.
         divider.isHidden = true
         result.isHidden = true
     }
@@ -172,7 +181,6 @@ final class PaneFingerprints: Pane {
         count.stringValue = n == 1 ? "1 finger" : "\(n) fingers"
 
         if n == 0 {
-            startButton.title = "Enrol the First Finger"
             intro.stringValue = """
                 The ring is breathing purple: the device is waiting for its first \
                 finger, and will keep asking until one takes.
@@ -180,12 +188,20 @@ final class PaneFingerprints: Pane {
                 Press the button below and follow the steps.
                 """
         } else {
-            startButton.title = "Add a Fingerprint"
             intro.stringValue = """
                 A new finger has to be authorised by one the device already knows.
 
                 Press the button below and follow the steps.
                 """
+        }
+
+        // After a run the button is the way on from where that run left off, so
+        // it says so rather than repeating the opening offer.
+        switch lastRun {
+        case .some(false): startButton.title = "Try Again"
+        case .some(true):  startButton.title = "Add Another"
+        case nil:          startButton.title = n == 0 ? "Enrol the First Finger"
+                                                      : "Add a Fingerprint"
         }
     }
 
@@ -195,6 +211,9 @@ final class PaneFingerprints: Pane {
         startButton.isEnabled = false
         startButton.title = "Watching…"
 
+        // Cleared so that a run which ends without a terminal event falls back
+        // to the neutral title rather than showing the previous run's verdict.
+        lastRun = nil
         gated = (DeviceAgent.shared.status?.templateCount ?? 0) > 0
         plan = gated ? Self.gatedSteps : Self.firstSteps
         rows.forEach { $0.removeFromSuperview() }
@@ -240,6 +259,7 @@ final class PaneFingerprints: Pane {
     }
 
     private func succeed(_ message: String) {
+        lastRun = true
         cursor = rows.count
         paint()
         result.stringValue = message
@@ -251,6 +271,7 @@ final class PaneFingerprints: Pane {
     /// carrying the reason. A failure arriving after the last step — a timeout on
     /// the way out, a dropped connection — has no row to land on and goes below.
     private func fail(_ message: String) {
+        lastRun = false
         if cursor < rows.count {
             rows[cursor].show(.failed, detail: message)
         } else {
