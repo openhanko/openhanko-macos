@@ -73,14 +73,47 @@ codesign --verify --deep --strict --verbose=2 "${BUNDLE}"
 
 echo "==> built ${BUNDLE}"
 
+# Never leave two registrations of the same extension.
+#
+# Launching the app from build/ registers that copy; installing registers the
+# one in /Applications. Both then carry bundle id ${EXT_NAME}, from different
+# paths and with different UUIDs, and ctkd will bind a token from one while the
+# other is the process that runs. The card then answers nobody: sc_auth still
+# lists the identity, system_profiler still lists the driver, no APDUs reach the
+# card, and the extension logs nothing — which reads exactly like a code bug.
+#
+# It cannot happen to anyone who installs a release, because there is only ever
+# one copy. It happens easily here, so `install` unregisters the build copy and
+# a plain build says so when an installed copy already owns the registration.
 if [ "${1:-}" = "install" ]; then
     echo "==> installing to /Applications"
+    # Quit first: the app holds the device's serial port, and the extension is a
+    # live process inside the bundle about to be replaced.
+    osascript -e "tell application \"${APP_NAME}\" to quit" 2>/dev/null || true
+    pluginkit -r "${EXT_BUNDLE}" 2>/dev/null || true
     rm -rf "/Applications/${APP_NAME}.app"
     cp -R "${BUNDLE}" /Applications/
+
+    # Replacing the bundle underneath ctkd leaves it serving a token identity
+    # for an extension it will no longer launch: sc_auth keeps reporting the
+    # token, no APDUs reach the card, and nothing is logged. Restarting it here
+    # is what makes reinstalling reliable; both daemons relaunch on demand.
+    killall ctkd pkd 2>/dev/null || true
+
     # pluginkit notices new extensions on its own, but nudging it makes the
     # registration immediate rather than eventual.
     pluginkit -a "/Applications/${APP_NAME}.app/Contents/PlugIns/${EXT_NAME}.appex" || true
+    lsregister -f "/Applications/${APP_NAME}.app" 2>/dev/null \
+        || /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+           -f "/Applications/${APP_NAME}.app"
     echo
     echo "registered extensions:"
     pluginkit -m -p com.apple.ctk-tokens | sed 's/^/    /'
+    echo
+    echo "re-insert the device: macOS binds a token driver at insertion."
+elif [ -d "/Applications/${APP_NAME}.app" ]; then
+    echo
+    echo "note: /Applications/${APP_NAME}.app is installed and owns the extension"
+    echo "      registration. Do not open ${BUNDLE} — two registrations of"
+    echo "      ${EXT_NAME} wedge ctkd. Run './build.sh install' instead."
 fi

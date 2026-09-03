@@ -76,11 +76,40 @@ enum AuthTest {
     /// back is evidence the card did something; a signature that *verifies* is
     /// evidence it did the right thing with the key macOS believes it has, which
     /// is the claim being tested.
-    static func run(deviceName: String, completion: @escaping (Outcome) -> Void) {
+    /// The wait is bounded, and the answer is delivered once.
+    ///
+    /// `SecKeyCreateSignature` blocks until the card answers and cannot be
+    /// cancelled, so a card that never answers — unplugged mid-test, a driver
+    /// that did not bind, ctkd holding a token for an extension it will not
+    /// launch — leaves the caller waiting forever behind a dead button. The
+    /// deadline reports that as an outcome like any other, and a real result
+    /// arriving afterwards is dropped rather than overwriting it.
+    static func run(deviceName: String, timeout: TimeInterval = 30,
+                    completion: @escaping (Outcome) -> Void) {
+        let once = NSLock()
+        var answered = false
+        let finish = { (outcome: Outcome) in
+            once.lock()
+            let first = !answered
+            answered = true
+            once.unlock()
+            guard first else { return }
+            DispatchQueue.main.async { completion(outcome) }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            finish(Outcome(
+                ok: false,
+                summary: "No answer",
+                detail: """
+                    The device did not sign within \(Int(timeout)) seconds.
+
+                    If the ring never flashed, macOS did not ask it. Reconnect \
+                    the device and try again.
+                    """))
+        }
+
         DispatchQueue.global(qos: .userInitiated).async {
-            let finish = { (outcome: Outcome) in
-                DispatchQueue.main.async { completion(outcome) }
-            }
 
             guard let (key, tokenID) = tokenKey(named: deviceName) else {
                 return finish(Outcome(
