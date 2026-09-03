@@ -61,12 +61,10 @@ final class PaneStatus: Pane {
             headline.stringValue = "No device connected"
             name.stringValue = ""
             detail.stringValue = """
-                Plug in your OpenHanko. It works on any Mac with nothing \
-                installed; this app adds settings, guided enrolment and \
-                diagnostics.
+                Plug in your OpenHanko.
 
-                If it is plugged in and this does not change, another program may \
-                be holding its serial port — provision.py, or a terminal.
+                If it is plugged in and nothing changes, another program has its \
+                serial port — provision.py, or a terminal.
                 """
             pairButton.isHidden = true
             pairNote.stringValue = ""
@@ -119,7 +117,7 @@ final class PaneStatus: Pane {
         switch pairState {
         case .unknown:
             pairButton.isHidden = true
-            pairNote.stringValue = "Checking whether this Mac already trusts it…"
+            pairNote.stringValue = "Checking pairing…"
         case .noIdentity:
             pairButton.isHidden = true
             pairNote.stringValue = "macOS has not read an identity from this device yet."
@@ -138,7 +136,7 @@ final class PaneStatus: Pane {
         guard let status = DeviceAgent.shared.status else { return }
         testButton.isEnabled = false
         testButton.title = "Touch the sensor…"
-        testNote.stringValue = "The ring is breathing. Rest your finger on it."
+        testNote.stringValue = "Rest your finger on the sensor."
         AuthTest.run(deviceName: status.name) { [weak self] outcome in
             guard let self else { return }
             self.testButton.isEnabled = true

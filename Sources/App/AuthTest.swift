@@ -87,9 +87,8 @@ enum AuthTest {
                     ok: false,
                     summary: "No key to test",
                     detail: """
-                        macOS is not holding an authentication key labelled \
-                        \(deviceName). That usually means the card has not been \
-                        read yet, or it has no identity.
+                        macOS is not holding a key labelled \(deviceName). The \
+                        card has not been read yet, or it has no identity.
                         """))
             }
 
@@ -121,8 +120,7 @@ enum AuthTest {
                     detail: """
                         The card did not sign. \(reason)
 
-                        A refusal here is usually the device not seeing a finger \
-                        in time, or a sensor it will not accept.
+                        Usually the device did not see a finger in time.
                         """))
             }
             let elapsed = Date().timeIntervalSince(started)
@@ -131,7 +129,7 @@ enum AuthTest {
                 return finish(Outcome(
                     ok: false,
                     summary: "Signed, but unverifiable",
-                    detail: "The card produced a signature and macOS has no public key to check it against."))
+                    detail: "The card signed, but macOS has no public key to check it against."))
             }
             let verified = SecKeyVerifySignature(
                 publicKey, algorithm, challenge as CFData, signature as CFData, nil)
@@ -145,21 +143,19 @@ enum AuthTest {
                 detail: verified
                     ? (pinpad
                         ? """
-                          A fresh challenge was signed by the card and checked \
-                          against its public key. This driver handled it, so no \
-                          PIN box appeared and nothing was typed — the fingerprint \
-                          was the whole authentication.
+                          The card signed a fresh challenge and it checked out. \
+                          No PIN box, nothing typed — the fingerprint was the \
+                          whole authentication.
                           """
                         : """
-                          A fresh challenge was signed by the card and checked \
-                          against its public key. macOS's own driver handled it, \
-                          which is why a PIN box appeared; the device filled it \
-                          in when you touched the sensor.
+                          The card signed a fresh challenge and it checked out. \
+                          macOS's own driver handled it, which is why a PIN box \
+                          appeared; the device filled it in.
                           """)
                     : """
-                      The card returned a signature that does not match its own \
-                      public key. That is a real fault rather than a refusal — \
-                      worth a diagnostics copy.
+                      The signature does not match the card's own public key. \
+                      That is a fault rather than a refusal — send a diagnostics \
+                      copy.
                       """))
         }
     }

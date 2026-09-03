@@ -64,10 +64,7 @@ final class PaneUpdate: Pane {
     override func apply(_ status: DeviceStatus?, error: String?) {
         guard bundledFirmware != nil else {
             headline.stringValue = "No firmware bundled"
-            detail.stringValue = """
-                This build of the app does not carry a firmware image. Releases \
-                do; a copy built from source will not unless one was added.
-                """
+            detail.stringValue = "This build does not carry a firmware image. Releases do."
             installButton.isHidden = true
             progress.stringValue = ""
             return
@@ -77,12 +74,11 @@ final class PaneUpdate: Pane {
         if let volume = bootloaderVolume {
             headline.stringValue = "Ready to install"
             detail.stringValue = """
-                The device is in update mode. Installing writes the firmware \
-                bundled with this app and the device restarts on its own.
+                Installs the firmware bundled with this app. The device restarts \
+                on its own.
 
-                It only runs firmware signed with the project's key, so an image \
-                that is wrong or has been tampered with will not start — the \
-                device comes back to update mode instead of becoming unusable.
+                An image that is wrong or tampered with will not start, and the \
+                device comes back here rather than becoming unusable.
                 """
             installButton.isEnabled = true
             progress.stringValue = volume
@@ -90,11 +86,9 @@ final class PaneUpdate: Pane {
             headline.stringValue = "Put the device in update mode"
             detail.stringValue = """
                 Double-tap the reset button on the device. A disk called RP2350 \
-                appears, and this page will notice it.
+                appears and this page will notice it.
 
-                This works even if the firmware on the device is broken or \
-                missing: the recovery lives in the chip's own boot ROM, below \
-                anything we install.
+                This works even if the firmware is broken or missing.
                 """
             installButton.isEnabled = false
             progress.stringValue = status.map { "\($0.name) is running normally." } ?? ""

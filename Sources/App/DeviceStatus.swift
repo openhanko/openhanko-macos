@@ -86,16 +86,13 @@ extension DeviceStatus {
         if sensorBlocked {
             return Finding(
                 severity: .blocking,
-                headline: "This is not the sensor it was set up with",
+                headline: "Sensor failure",
                 detail: """
-                The device records the fingerprint sensor it was paired with and \
-                refuses everything if it later meets a different one. That is \
-                deliberate: swapping the sensor for one an attacker controls \
-                would otherwise be the cheapest way past the fingerprint.
+                The device cannot confirm its fingerprint sensor, so it is \
+                refusing to authenticate.
 
-                The only way forward is a factory reset, which erases the key \
-                along with everything else. Hold the button while plugging the \
-                device in.
+                Factory reset clears this: hold the button while plugging the \
+                device in. It erases the key, so you will need to pair again.
                 """)
         }
         if !sensorPresent {
@@ -103,10 +100,8 @@ extension DeviceStatus {
                 severity: .blocking,
                 headline: "No fingerprint sensor",
                 detail: """
-                The device is running but its sensor did not answer. Without one \
-                nothing can authorise a signature, so the device cannot \
-                authenticate anything. This is a hardware fault rather than a \
-                setting.
+                The sensor is not answering, so the device cannot authenticate. \
+                This is a hardware fault, not a setting.
                 """)
         }
         if !hasIdentity {
@@ -114,9 +109,8 @@ extension DeviceStatus {
                 severity: .blocking,
                 headline: "No identity yet",
                 detail: """
-                The device generates its own key the first time it powers on with \
-                a working sensor. If this persists, the console reports why under \
-                Diagnostics.
+                The device makes its own key the first time it starts with a \
+                working sensor. If this does not clear, check Diagnostics.
                 """)
         }
         if templateCount == 0 {
@@ -124,21 +118,19 @@ extension DeviceStatus {
                 severity: .attention,
                 headline: "No fingerprint enrolled",
                 detail: """
-                A device with no finger cannot authenticate for anybody, so it is \
-                asking for one now — the ring is breathing purple. Rest the same \
-                finger on the sensor twice.
-
-                Enrol Fingerprint below will talk you through it.
+                The ring is breathing purple and will keep asking. Rest the same \
+                finger on the sensor twice, or open Fingerprints to be talked \
+                through it.
                 """)
         }
         if !hasSecret {
             return Finding(
                 severity: .attention,
-                headline: "Key material is not encrypted at rest",
+                headline: "Not encrypted at rest",
                 detail: """
-                This device has no secret in its one-time memory, so what it \
-                stores in flash is not wrapped. Units provisioned normally have \
-                one; a development board may not.
+                This device has no secret in one-time memory, so its key material \
+                is stored unwrapped. Provisioned units have one; a development \
+                board may not.
                 """)
         }
         if touchLine == "unwired" {
@@ -146,9 +138,8 @@ extension DeviceStatus {
                 severity: .attention,
                 headline: "Touch line not connected",
                 detail: """
-                The sensor's TouchOut wire is missing, so a match cannot be \
-                correlated against a finger actually being present. Everything \
-                still works; one defence is absent.
+                The sensor's TouchOut wire is missing. Everything still works, \
+                but the device cannot check that a finger is really present.
                 """)
         }
         return Finding(
@@ -156,16 +147,14 @@ extension DeviceStatus {
             headline: aidMode == "pinpad" ? "Ready — no PIN prompts" : "Ready",
             detail: aidMode == "pinpad"
                 ? """
-                  This driver is handling the device, so macOS asks the reader \
-                  instead of asking you. When something needs you the ring \
-                  breathes; touch it and it signs.
+                  macOS asks the device instead of asking you. When something \
+                  needs you the ring flashes blue — touch it.
                   """
                 : """
-                  macOS is using its own smart-card driver, so you will see a PIN \
-                  box. Touching the sensor fills it in for you.
+                  macOS is using its own driver, so you will see a PIN box. \
+                  Touching the sensor fills it in.
 
-                  Reconnect the device to switch it to touch-only mode now that \
-                  this driver is installed.
+                  Reconnect the device to switch to touch-only mode.
                   """)
     }
 }

@@ -27,10 +27,7 @@ final class PaneSettings: Pane {
         // fact about the sensor's protocol, and it belongs in the README — a
         // person choosing a colour from a menu is not asking to be taught how
         // the LED is wired.
-        explanation.stringValue = """
-            What the ring shows when the device has nothing to say — enough to \
-            find it on a dark desk without being a nuisance in the room.
-            """
+        explanation.stringValue = "What the ring shows when the device is idle."
 
         stack.setViews([UI.row([label, popup], spacing: 12), note,
                         explanation, UI.separator(), aidLine], in: .leading)
@@ -57,8 +54,8 @@ final class PaneSettings: Pane {
         // it is does not stick — the probe upgrades it straight back. A control
         // that undid itself a second later would read as broken.
         aidLine.stringValue = status.aidMode == "pinpad"
-            ? "Touch-only mode, chosen by the device because this driver is installed."
-            : "Driverless mode. Reconnect the device to switch it now this driver is installed."
+            ? "Touch-only mode. This driver is handling the device."
+            : "Driverless mode. Reconnect the device to switch to touch-only."
     }
 
     @objc private func chooseColour() {

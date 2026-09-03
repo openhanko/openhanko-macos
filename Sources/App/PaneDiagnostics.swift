@@ -27,8 +27,8 @@ final class PaneDiagnostics: Pane {
 
         traceView.isEditable = false
         traceView.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-        traceView.string = "The device keeps a ring buffer of recent card activity.\n"
-            + "Read Trace shows it: APDUs, CCID requests, and when a finger was seen."
+        traceView.string = "Read Trace shows the device's record of recent card "
+            + "activity: APDUs, CCID requests, and when a finger was seen."
 
         let scroll = NSScrollView()
         scroll.documentView = traceView
@@ -91,7 +91,7 @@ final class PaneDiagnostics: Pane {
             case .success(let lines):
                 let trace = lines.filter { $0.hasPrefix("TRACE") }
                 self.traceView.string = trace.isEmpty
-                    ? "Nothing recorded yet. Use the device — sign in, or run sudo — and read again."
+                    ? "Nothing recorded yet. Use the device — sign in, or run sudo — then read again."
                     : trace.joined(separator: "\n")
                 if let info = lines.first(where: { $0.hasPrefix("OK FINGERPRINT_INFO") }) {
                     self.sensorLine.stringValue = String(info.dropFirst("OK FINGERPRINT_INFO ".count))
