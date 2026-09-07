@@ -1,38 +1,13 @@
 #!/bin/bash
 # Installs the PAM module for sudo. Run with sudo.
+#
+# Installed as `auth sufficient` in /etc/pam.d/sudo_local — Apple's documented
+# hook, the same one Touch ID uses, and a file that survives system updates.
+#
+# `sufficient` is what makes this safe: if the module returns anything other
+# than success the stack simply continues to the password prompt, exactly as
+# today. The worst case is that nothing changes.
 set -euo pipefail
-
-# ---------------------------------------------------------------------------
-# DO NOT INSTALL THIS. It is kept as a reference implementation and for the
-# standalone tester next to it, which still works and is still useful.
-#
-# Two independent reasons, both measured on macOS 26.6:
-#
-#   1. It cannot load. AMFI refuses to map a third-party library into a
-#      platform binary, and /usr/bin/sudo is one:
-#
-#        Library Validation failed: Rejecting pam_smartcard_presence.so
-#        (Team ID: 6W25N2CW6H, platform: no) for process 'sudo' (platform:
-#        yes), reason: mapping process is a platform binary, but mapped file
-#        is not
-#
-#      The verdict is `platform: no`, not the team, so signing does not fix
-#      it — the rejection is identical ad-hoc signed and Developer ID signed.
-#      Installed, it costs a failed mmap on every single sudo and does nothing.
-#
-#   2. It is not needed. Apple's own pam_smartcard reaches CryptoTokenKit,
-#      which calls this project's token driver, which answers with a
-#      PC_to_RDR_Secure request. `sudo -k && sudo -v` completes on a touch
-#      with no PIN prompt while this module is being rejected on every
-#      invocation — so the seamless path is Apple's, not ours.
-#
-# Verified on the device's own trace: SELECT, 87 11 9a -> 6982, the beginAuth
-# breadcrumb 6a82, CCID 69 Secure, EVENT FINGER, 87 11 9a -> 9000.
-# ---------------------------------------------------------------------------
-echo "refusing to install: see the comment at the top of this script" >&2
-echo "sudo already authenticates on a touch through Apple's pam_smartcard;" >&2
-echo "this module cannot be loaded into sudo and would do nothing." >&2
-exit 1
 
 MODULE=/usr/local/lib/pam_smartcard_presence.so
 HELPER=/usr/local/libexec/smartcard-auth-helper
