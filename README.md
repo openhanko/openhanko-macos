@@ -224,17 +224,22 @@ a PIN field depends on who collects it first:
 
 | path | who collects the PIN | pinpad used? | PIN field? |
 | --- | --- | --- | --- |
-| `sudo`, with `tools/pam` installed | CryptoTokenKit | **yes** | **none** |
-| `sudo`, stock | `pam_smartcard`, before CTK is consulted | no | yes, on the TTY |
+| `sudo`, touched in time | CryptoTokenKit, reached by Apple's `pam_smartcard` | **yes** | **none** |
+| `sudo`, no touch within ~10 s | `pam_smartcard` falls back to its own prompt | no | yes, on the TTY |
 | Security framework / SecKey | CryptoTokenKit | **yes** | **none** |
 | apps with their own PIN UI, e.g. Chrome | the application | no | yes |
 
-`sudo` is seamless once `tools/pam` is installed, and that is the reason the
-module exists: `pam_smartcard.so` does not link CryptoTokenKit and has no pinpad
-path, so it prompts on the TTY and hands the token a pre-filled PIN. Our module
-runs ahead of it as `sufficient` and authenticates through CTK instead, which
-puts the device back in charge: a `sudo` on that path carries `CCID 69 Secure`,
-presence and the signature, with no `VERIFY` in it at all.
+**`sudo` is seamless with nothing of ours in the PAM stack.** Apple's
+`pam_smartcard` reaches CryptoTokenKit, which calls this driver, which answers
+with `PC_to_RDR_Secure`; the card holds the request open until a finger arrives.
+On the device's trace a `sudo` reads SELECT, `87 11 9a` → `6982`, the beginAuth
+breadcrumb `6a82`, `CCID 69 Secure`, `EVENT FINGER`, `87 11 9a` → `9000`, with no
+`VERIFY` in it at all.
+
+Leave it untouched and the host abandons the request after about ten seconds;
+`pam_smartcard` then collects a PIN on the TTY, which is where its literal
+`"Enter PIN for '%s': "` comes from. Touching at that point still works, because
+the device types the digits.
 
 Applications that present their own PIN field are the remaining gap. Chrome's
 password manager unlocks correctly but still shows a modal, and the device types
@@ -272,11 +277,9 @@ vden has 3 paired identity(ies)
   signature verified — vden authenticated
 ```
 
-It exists because `pam_smartcard.so` cannot do this. That module links only
-Security and OpenDirectory — **not CryptoTokenKit** — and contains the literal
-string `"Enter PIN for '%s': "`. It collects the PIN itself and has no pinpad
-code path at all, which is why `sudo`, the login window and SecurityAgent-
-mediated prompts all type a PIN while `SecKeyCreateSignature` does not.
+It is a useful standalone check — it exercises the same path `sudo` takes and
+reports where it stopped — and it is the only part of `tools/pam/` that should
+be run. The PAM module built beside it must not be installed; see below.
 
 The check is a challenge-response:
 
@@ -290,21 +293,29 @@ Step 2 stops another card authenticating as you; step 3 stops a replay; and
 `piv.c` clears the PIN-verified window after every signature, so each
 authentication costs exactly one fingerprint.
 
-### The PAM module
+### The PAM module cannot be used, and is not needed
 
-`tools/pam/` builds this into a PAM module. Installed, `sudo` authenticates by
-touching the sensor — **no PIN prompt at all**:
+`tools/pam/` also builds this into a PAM module. **`install.sh` refuses to run.**
+Two independent reasons, both measured on macOS 26.6.
 
-```sh
-./tools/pam/build.sh
-sudo ./tools/pam/install.sh     # auth sufficient, in /etc/pam.d/sudo_local
-sudo ./tools/pam/uninstall.sh   # to undo
+**It cannot load.** AMFI will not map a third-party library into a platform
+binary, and `/usr/bin/sudo` is one:
+
+```
+Library Validation failed: Rejecting '/usr/local/lib/pam_smartcard_presence.so'
+(Team ID: 6W25N2CW6H, platform: no) for process 'sudo' (Team ID: N/A,
+platform: yes), reason: mapping process is a platform binary, but mapped file
+is not
 ```
 
-It cannot lock you out. `sufficient` means anything other than success falls
-through to the existing password stack, and the module returns
-`PAM_AUTHINFO_UNAVAIL` for every condition except "a paired card was present and
-failed its challenge".
+The verdict is `platform: no`, not the team, so signing does not help — the
+rejection is identical ad-hoc signed and Developer ID signed, and no third party
+can be platform-signed. Installed, it costs a failed mmap on every `sudo` and
+contributes nothing.
+
+**It is not needed.** `sudo -k && sudo -v` completes on a touch with no PIN
+prompt while this module is being rejected on every invocation, so the seamless
+path is Apple's `pam_smartcard` reaching CryptoTokenKit — not ours.
 
 **It must be fork+exec, not fork.** Calling OpenDirectory in a forked child
 crashes by design:

@@ -17,17 +17,15 @@ echo "==> PAM module"
 clang -O2 -Wall -shared -o pam_smartcard_presence.so \
     pam_smartcard_presence.c $FRAMEWORKS -lpam
 
-# Sign the module.
+# Sign the helper and the module.
 #
-# clang leaves an ad-hoc, linker-signed binary, and AMFI refuses to map one into
-# sudo, which is an Apple platform binary:
+# This does NOT make the module loadable by sudo, which was the reason it was
+# added: AMFI's objection is `platform: no`, not the team, so a Developer ID
+# signature is rejected exactly as the ad-hoc one was. Nothing a third party can
+# sign will load into a platform binary. See install.sh, which refuses.
 #
-#   Library Validation failed: Rejecting '/usr/local/lib/pam_smartcard_presence.so'
-#   (Team ID: none, platform: no) for process 'sudo' ... reason: mapping process
-#   is a platform binary, but mapped file is not
-#
-# The module then never loads, PAM falls through to pam_smartcard.so, and sudo
-# prompts for a PIN on the TTY — which looks exactly like our module declining.
+# Kept because the helper is a real executable that Gatekeeper will judge, and
+# an ad-hoc signature is the wrong thing to ship regardless.
 IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
     | grep 'Developer ID Application' | head -1 | sed 's/.*"\(.*\)"/\1/')}"
 if [ -n "${IDENTITY}" ]; then
