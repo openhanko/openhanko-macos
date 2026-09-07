@@ -173,9 +173,9 @@ logged, which looks exactly like a code bug and is not one. Recovering takes a
 full reset: remove the app, `killall ctkd pkd`, reinstall, `lsregister -f`,
 launch the app, then re-insert the card.
 
-## The two non-obvious bugs
+## Three non-obvious bugs
 
-Neither produces a useful error.
+None of them produces a useful error.
 
 ### beginAuth is never called until the operation asks for it
 
@@ -206,6 +206,31 @@ answer is silently dropped, and the host waits until it times out.
 
 The firmware therefore sends no initial extension; the periodic tick sends the
 first one a second later, by which time the endpoint is free.
+
+### Reporting a failed verification as retriable recurses until the stack is gone
+
+`TKError.authenticationFailed` is the error that means *wrong PIN, some attempts
+remaining*, so CryptoTokenKit answers it by evaluating the auth operation again
+— immediately, and on the same stack:
+
+```
+evaluateAuthOperation:tokenOperation:retry:reply:
+  finalizeAuthOperation:evaluatedAuthOperation:reply:
+    evaluateAuthOperation:tokenOperation:reply:
+      evaluateAuthOperation:tokenOperation:retry:reply:   …
+```
+
+A card with a retry counter eventually returns `63CX` and the loop ends. This one
+has no PIN and no counter, so nothing ever decrements: the extension died of
+`SIGBUS` at the stack guard page with several hundred of those frames. Every
+failure on this path is terminal — no finger inside the timeout, or a reader that
+would not run the interaction — so it reports `.canceledByUser`.
+
+The visible symptom was somewhere else entirely. A `sudo` left unanswered would
+spin the retry loop while holding the card, and the lock screen then could not
+acquire it: two attempts, ten seconds each, *"SmartCard initialisation error"*,
+and only unplugging the device cleared it. Nothing about that points at an auth
+operation returning the wrong error code.
 
 ## Pinpad, and how far it reaches
 
