@@ -364,7 +364,21 @@ final class TokenSession: TKSmartCardTokenSession, TKTokenSessionDelegate {
             note("secure PIN verification error: \(failure.localizedDescription)")
         }
         guard succeeded, interaction.resultSW == 0x9000 else {
-            throw TKError(.authenticationFailed)
+            // Not .authenticationFailed, which is the error that means "wrong
+            // PIN, some attempts left" — CryptoTokenKit answers it by evaluating
+            // the auth operation again, immediately, through
+            // -[TKTokenSession evaluateAuthOperation:tokenOperation:retry:reply:].
+            //
+            // A card with a retry counter eventually returns 63CX and stops the
+            // loop. This one has no PIN and no counter, so nothing ever
+            // decrements and the recursion runs until the stack guard page is
+            // hit: the extension died of SIGBUS with several hundred frames of
+            // evaluateAuthOperation → finalizeAuthOperation → evaluateAuthOperation.
+            //
+            // Every failure here is terminal — no finger inside the timeout, or
+            // a reader that would not run the interaction — so it must be
+            // reported as one.
+            throw TKError(.canceledByUser)
         }
     }
 
@@ -541,7 +555,7 @@ final class PinpadAuthOperation: TKTokenAuthOperation {
     weak var session: TokenSession?
 
     override func finish() throws {
-        guard let session else { throw TKError(.authenticationFailed) }
+        guard let session else { throw TKError(.canceledByUser) }
         try session.performSecurePINVerification()
     }
 }
