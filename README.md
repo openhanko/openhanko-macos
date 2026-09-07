@@ -306,6 +306,35 @@ through to the existing password stack, and the module returns
 `PAM_AUTHINFO_UNAVAIL` for every condition except "a paired card was present and
 failed its challenge".
 
+**It must be signed, and `build.sh` signs it.** `clang -shared` leaves an ad-hoc,
+linker-signed binary, and AMFI will not map one into `sudo`, which is an Apple
+platform binary:
+
+```
+Library Validation failed: Rejecting '/usr/local/lib/pam_smartcard_presence.so'
+(Team ID: none, platform: no) for process 'sudo' (Team ID: N/A, platform: yes),
+reason: mapping process is a platform binary, but mapped file is not
+```
+
+A Developer ID signature clears it. Unsigned, the failure is silent and reads
+exactly like the module declining: PAM falls through to `pam_smartcard.so`, which
+asks for a PIN on the TTY, and the only place the truth appears is the kernel
+log. `build.sh` refuses quietly to sign if no Developer ID identity is available,
+and says so.
+
+**Its own log is the witness**, not the absence of one. The module and its helper
+log under `io.openhanko.pam`, and unlike the token extension they do reach
+`log show`:
+
+```sh
+log show --last 10m --predicate 'subsystem == "io.openhanko.pam"' --style compact
+```
+
+A working authentication reads `challenging paired identity <hash>` then
+`signature verified; <user> authenticated`. Check this before concluding the
+module is not running — a Library Validation rejection in the kernel log is not
+proof that it never loads, since both can appear on the same machine.
+
 **It must be fork+exec, not fork.** Calling OpenDirectory in a forked child
 crashes by design:
 
