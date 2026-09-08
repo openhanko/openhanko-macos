@@ -226,21 +226,20 @@ has no PIN and no counter, so nothing ever decrements: the extension died of
 failure on this path is terminal — no finger inside the timeout, or a reader that
 would not run the interaction — so it reports `.canceledByUser`.
 
-The visible symptom was somewhere else entirely. A `sudo` left unanswered would
-spin the retry loop while holding the card, and the lock screen then could not
-acquire it: two attempts, ten seconds each, *"SmartCard initialisation error"*,
-and only unplugging the device cleared it. Nothing about that points at an auth
-operation returning the wrong error code.
+The symptom surfaces far from the cause: a `sudo` left unanswered spins the loop
+while holding the card, so the lock screen cannot acquire it and reports
+*"SmartCard initialisation error"* after ten seconds, twice, until the device is
+unplugged.
 
 ## Pinpad, and how far it reaches
 
 Signing through the Security framework with **no PAM in the path** — any app
-doing client-certificate authentication — the card is refused with `6982`, `beginAuth` runs — visible as a failed SELECT
-of the standard AID, `6a82` — a pinpad request arrives with no dialog on screen,
-and the signature completes on a fingerprint.
+doing client-certificate authentication — the card is refused with `6982`,
+`beginAuth` runs (visible as a failed SELECT of the standard AID, `6a82`), a
+pinpad request arrives with no dialog on screen, and the signature completes on a
+fingerprint.
 
-**No PIN dialog, nothing typed, authenticated by presence alone.** That is
-what a pinpad reader is for, and CryptoTokenKit does it correctly.
+**No PIN dialog, nothing typed, authenticated by presence alone.**
 
 ### What pinpad reaches
 
@@ -343,12 +342,11 @@ reason: mapping process is a platform binary, but mapped file is not
 
 A Developer ID signature clears it. Unsigned, the failure is silent and reads
 exactly like the module declining: PAM falls through to `pam_smartcard.so`, which
-asks for a PIN on the TTY, and the only place the truth appears is the kernel
-log. `build.sh` refuses quietly to sign if no Developer ID identity is available,
-and says so.
+asks for a PIN on the TTY. `build.sh` warns when it finds no Developer ID
+identity to sign with.
 
-**Its own log is the witness**, not the absence of one. The module and its helper
-log under `io.openhanko.pam`, and unlike the token extension they do reach
+**Whether it ran is a question its own log answers.** The module and its helper
+log under `io.openhanko.pam`, and unlike the token extension those lines do reach
 `log show`:
 
 ```sh
@@ -356,9 +354,7 @@ log show --last 10m --predicate 'subsystem == "io.openhanko.pam"' --style compac
 ```
 
 A working authentication reads `challenging paired identity <hash>` then
-`signature verified; <user> authenticated`. Check this before concluding the
-module is not running — a Library Validation rejection in the kernel log is not
-proof that it never loads, since both can appear on the same machine.
+`signature verified; <user> authenticated`.
 
 **It must be fork+exec, not fork.** Calling OpenDirectory in a forked child
 crashes by design:
@@ -377,9 +373,9 @@ cannot take `sudo` with it.
 
 ### What it does not cover
 
-GUI authorization prompts — Chrome's password manager, unlocking Settings, the
-lock screen — still ask for a PIN, and a PAM module cannot change that. Those
-stacks use `use_first_pass`:
+GUI authorization prompts — Chrome's password manager, unlocking Settings — still
+ask for a PIN, and a PAM module cannot change that. Those stacks use
+`use_first_pass`:
 
 ```
 # /etc/pam.d/authorization
@@ -391,7 +387,13 @@ For `sudo`, PAM did the prompting, so replacing the module removed the prompt.
 For GUI authorization the prompt happens upstream of PAM entirely, so adding a
 module there would add a touch *after* the PIN rather than replacing it.
 
-### GUI prompts cannot be covered at all on macOS 26
+**The lock screen is not one of these.** It goes through CryptoTokenKit and
+reaches the pinpad: a traced unlock reads `87 11 9a` → `6982`, the `6a82`
+breadcrumb, `CCID 69 Secure`, `EVENT FINGER`, `87 11 9a` → `9000`, then
+`87 11 9d` → `9000` for the login keychain — with no `VERIFY` anywhere, so
+nothing was typed.
+
+### Authorization prompts cannot be covered at all on macOS 26
 
 An authorization plugin (`tools/authplugin/`) is the right tool in principle:
 mechanisms placed ahead of `builtin:authenticate` can grant authorization before
@@ -411,8 +413,8 @@ authorizationhost mechanisms invoked: 0
 Chrome's password manager behaves identically — `Creating LAContext`, then
 `coreauthd`, with SecurityAgent only borrowed to draw the UI.
 
-So GUI authentication has moved to **LocalAuthentication**, and LocalAuthentication
-has no third-party extension point: Apple decides what `LAContext` accepts
+So authentication in those panes has moved to **LocalAuthentication**, which has
+no third-party extension point: Apple decides what `LAContext` accepts
 (password, Touch ID, Watch, smart-card PIN) and there is no API to add
 "presence on this reader" to that list. The authorization database is legacy for
 these flows.
@@ -435,8 +437,9 @@ locked out anyway, because the failure was latency. **Any mechanism in an
 authentication path must return promptly, always** — one that waits on a human
 cannot live in a right the lock screen depends on.
 
-**Net position:** `sudo` and anything going through `SecKeyCreateSignature` can
-be authenticated by presence. GUI authorization prompts cannot, by construction.
+**Net position:** `sudo`, the lock screen, and anything going through
+`SecKeyCreateSignature` can be authenticated by presence. Authorization prompts
+drawn by SecurityAgent, and applications that collect a PIN themselves, cannot.
 
 ## Open questions
 
