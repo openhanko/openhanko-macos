@@ -62,7 +62,12 @@ final class PaneDiagnostics: Pane {
             UI.field("Device", status.name),
             UI.field("Silicon", status.chip),
             UI.field("Identity", status.hasIdentity ? "on the device" : "none"),
-            UI.field("Encrypted at rest", status.hasSecret ? "yes" : "no"),
+            // Not `hasSecret`: the secret only protects anything when secure
+            // boot stops other firmware reading it back.
+            UI.field("Encrypted at rest", status.encryptedAtRest ? "yes"
+                                            : (status.hasSecret ? "no — secure boot off" : "no")),
+            UI.field("Secure boot", status.secureBoot.map { $0 ? "on" : "off" } ?? "not reported"),
+            UI.field("Debug port", status.debugLocked.map { $0 ? "fused" : "open" } ?? "not reported"),
             UI.field("Sensor", status.sensorBlocked ? "not the one it was set up with"
                         : (status.sensorPresent ? "present and bound" : "not answering")),
             UI.field("Touch line", status.touchLine),

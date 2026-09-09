@@ -26,6 +26,27 @@ struct DeviceStatus {
     var touchLine: String { fields["touch"] ?? "unwired" }
     var driverClaimed: Bool { fields["claimed"] == "yes" }
 
+    /// Whether the part's lockdown fuses are burned.
+    ///
+    /// Absent on firmware older than these fields, which is why they read as
+    /// `nil` rather than `false`: "this device does not say" and "this device
+    /// says no" are different answers, and only the second is worth warning
+    /// about.
+    var secureBoot: Bool? {
+        switch fields["secureboot"] { case "on": true; case "off": false; default: nil }
+    }
+    var debugLocked: Bool? {
+        switch fields["debug"] { case "locked": true; case "open": false; default: nil }
+    }
+
+    /// Whether the OTP secret is actually buying anything.
+    ///
+    /// `otp=set` alone does not mean key material is protected. Without secure
+    /// boot, anyone holding the device can flash firmware that reads the secret
+    /// and decrypts the key — so a unit sold deliberately unlocked has
+    /// encryption at rest in name only, and this pane used to say it was fine.
+    var encryptedAtRest: Bool { hasSecret && secureBoot != false }
+
     /// Parses `OK STATUS a=b c="d e" ...`.
     ///
     /// Hand-rolled rather than split-on-space: the device name is quoted and
@@ -131,6 +152,19 @@ extension DeviceStatus {
                 This device has no secret in one-time memory, so its key material \
                 is stored unwrapped. Provisioned units have one; a development \
                 board may not.
+                """)
+        }
+        if secureBoot == false {
+            return Finding(
+                severity: .attention,
+                headline: "Unlocked unit",
+                detail: """
+                Secure boot is off on this device, so anyone holding it can run \
+                firmware that reads the secret and decrypts your key. It is \
+                encrypted in flash, but that is worth nothing here.
+
+                This is how development units ship, on purpose. Treat it as a \
+                board to build on rather than a key to rely on.
                 """)
         }
         if touchLine == "unwired" {
