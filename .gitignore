@@ -10,3 +10,6 @@ tools/pam/smartcard-auth
 tools/pam/smartcard-auth-helper
 *.so
 *.o
+
+# Signed with the project key and copied in at release time; an artefact, not source.
+Resources/firmware.uf2
