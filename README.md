@@ -98,18 +98,25 @@ rejecting; Ignoring mis-configured plugin at [....appex]: plug-ins must be sandb
 registers but every APDU fails. Both live in `Resources/token.entitlements`,
 and they are exactly what the shipping EstEID token uses.
 
-**Registration is not automatic.** Copying the app into `/Applications` is not
-enough, and neither is `pluginkit -a`. What actually works:
+**Registration follows the copy, and `cp` is not a copy LaunchServices hears
+about.** Finder registers a bundle it moves; `cp -R` from a script does not, so
+the extension stays invisible afterwards — `pluginkit -m -p com.apple.ctk-tokens`
+simply does not list it, with no error anywhere. `pluginkit -a` does not fix it
+either. This does, and `./build.sh install` runs it for you:
 
 ```sh
 lsregister -f /Applications/OpenHanko.app
 open /Applications/OpenHanko.app
 ```
 
-Until then `pluginkit -m -p com.apple.ctk-tokens` simply does not list it, with
-no error anywhere. `pluginkit -m -A -D -vvv | grep -i openhanko` shows
-records that the filtered listing hides, which is the quickest way to tell
-"not registered" from "registered but not matching".
+`pluginkit -m -A -D -vvv | grep -i openhanko` shows records that the filtered
+listing hides, which is the quickest way to tell "not registered" from
+"registered but not matching".
+
+Installing a release does not run into this: dragging the app out of the disk
+image is a Finder copy, so it is registered, and launching it once registers the
+extension. That is the path the release notes describe — reasoned from the
+above, since every install here has been the script's.
 
 ## Design
 
