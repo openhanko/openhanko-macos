@@ -18,6 +18,24 @@ BUNDLE="build/${APP_NAME}.app"
 EXT_BUNDLE="${BUNDLE}/Contents/PlugIns/${EXT_NAME}.appex"
 DEPLOY_TARGET="macos13.0"
 
+# Universal: Apple silicon and Intel. The Intel Macs are half the point — they
+# cannot use Apple's Touch ID keyboard at all, so they are the machines most in
+# need of this. swiftc takes one -target per invocation, so each binary is built
+# once per architecture and joined with lipo.
+ARCHS=(arm64 x86_64)
+
+# Compiles one Mach-O per architecture into build/obj, then lipos them into $out.
+universal() {
+    local out="$1"; shift
+    local parts=()
+    for arch in "${ARCHS[@]}"; do
+        local part="build/obj/$(basename "$out").${arch}"
+        swiftc "$@" -target "${arch}-apple-${DEPLOY_TARGET}" -O -o "$part"
+        parts+=("$part")
+    done
+    lipo -create "${parts[@]}" -output "$out"
+}
+
 # Any Developer ID Application identity in the keychain. Ad-hoc signing is not
 # enough: ctkd refuses to load an extension it cannot validate.
 IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning |
@@ -28,16 +46,14 @@ if [ -z "$IDENTITY" ]; then
 fi
 
 rm -rf build
-mkdir -p "${BUNDLE}/Contents/MacOS" "${EXT_BUNDLE}/Contents/MacOS"
+mkdir -p "${BUNDLE}/Contents/MacOS" "${EXT_BUNDLE}/Contents/MacOS" build/obj
 
 echo "==> container app"
 # Every file in Sources/App, not just main.swift: the app grew from one window
 # into panes, a console client and a device agent, and a glob is one fewer thing
 # to forget when adding the next one.
-swiftc Sources/App/*.swift \
-    -target "arm64-apple-${DEPLOY_TARGET}" \
-    -framework AppKit -framework CryptoTokenKit -framework Security \
-    -O -o "${BUNDLE}/Contents/MacOS/${APP_NAME}"
+universal "${BUNDLE}/Contents/MacOS/${APP_NAME}" Sources/App/*.swift \
+    -framework AppKit -framework CryptoTokenKit -framework Security
 cp Resources/Info-app.plist "${BUNDLE}/Contents/Info.plist"
 
 # A signed firmware image, if one has been put here. The Update pane installs it
@@ -57,12 +73,10 @@ echo "==> token extension"
 # -module-name must match com.apple.ctk.driver-class in Info-ext.plist, since
 # CryptoTokenKit looks the class up by its Swift-mangled <Module>.<Class> name.
 # -e _NSExtensionMain is the entry point every .appex uses.
-swiftc Sources/Token/*.swift \
-    -target "arm64-apple-${DEPLOY_TARGET}" \
+universal "${EXT_BUNDLE}/Contents/MacOS/${EXT_NAME}" Sources/Token/*.swift \
     -module-name "${EXT_NAME}" \
     -framework CryptoTokenKit -framework Foundation \
-    -Xlinker -e -Xlinker _NSExtensionMain \
-    -O -o "${EXT_BUNDLE}/Contents/MacOS/${EXT_NAME}"
+    -Xlinker -e -Xlinker _NSExtensionMain
 cp Resources/Info-ext.plist "${EXT_BUNDLE}/Contents/Info.plist"
 
 echo "==> signing as ${IDENTITY}"
