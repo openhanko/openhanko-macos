@@ -44,6 +44,9 @@ cp Resources/Info-app.plist "${BUNDLE}/Contents/Info.plist"
 # by copying to the bootloader's mass-storage volume; without it that pane says
 # so and does nothing. Kept out of the repository because it is a build artefact
 # signed with the project key, not source.
+mkdir -p "${BUNDLE}/Contents/Resources"
+cp Resources/OpenHanko.icns "${BUNDLE}/Contents/Resources/"
+
 if [ -f Resources/firmware.uf2 ]; then
     mkdir -p "${BUNDLE}/Contents/Resources"
     cp Resources/firmware.uf2 "${BUNDLE}/Contents/Resources/firmware.uf2"
