@@ -15,7 +15,6 @@ final class PaneStatus: Pane {
     private let name = UI.caption("")
     private let pairButton = NSButton()
     private let testButton = NSButton()
-    private let terminalButton = NSButton()
     /// The sudo command to run when the password dialog could not pair.
     private var pendingCommand: String?
     // Wrapping and selectable: it can carry a command to paste, and a
@@ -50,17 +49,11 @@ final class PaneStatus: Pane {
         dot.font = .systemFont(ofSize: 13)
         let status = UI.row([dot, headline], spacing: 6)
 
-        pairButton.title = "Pair with this Mac…"
+        pairButton.title = "Pair in Terminal…"
         pairButton.bezelStyle = .rounded
         pairButton.target = self
         pairButton.action = #selector(pair)
         pairButton.isHidden = true
-
-        terminalButton.title = "Open in Terminal"
-        terminalButton.bezelStyle = .rounded
-        terminalButton.target = self
-        terminalButton.action = #selector(openTerminal)
-        terminalButton.isHidden = true
 
         testButton.title = "Test Authentication"
         testButton.bezelStyle = .rounded
@@ -69,7 +62,7 @@ final class PaneStatus: Pane {
         testButton.isHidden = true
 
         stack.setViews([status, name, detail, UI.separator(),
-                        UI.row([pairButton, terminalButton, testButton]), pairNote, testNote],
+                        UI.row([pairButton, testButton]), pairNote, testNote],
                        in: .leading)
         stack.setCustomSpacing(4, after: status)
         stack.setCustomSpacing(16, after: name)
@@ -147,9 +140,6 @@ final class PaneStatus: Pane {
     /// it implies the setup did not take, and the honest answer was one sc_auth
     /// call away the whole time.
     private func showPairing() {
-        var paired = false
-        if case .paired = pairState { paired = true }
-        terminalButton.isHidden = pendingCommand == nil || paired
         // A result the user has not yet dismissed wins over the state line.
         if let pairMessage {
             if case .unpaired(_) = pairState { pairButton.isHidden = false }
@@ -169,7 +159,7 @@ final class PaneStatus: Pane {
             pairNote.stringValue = "Paired with this Mac · \(label)"
         case .unpaired:
             pairButton.isHidden = false
-            pairNote.stringValue = "Runs sc_auth. macOS asks for your password."
+            pairNote.stringValue = "Opens a Terminal window, where sudo asks for your password once."
         }
     }
 
@@ -193,7 +183,8 @@ final class PaneStatus: Pane {
         guard let command = pendingCommand else { return }
         do {
             try Pairing.openInTerminal(command: command)
-            pairMessage = "Finish in the terminal window. This pane notices when pairing has worked."
+            pairMessage = "Finish in the Terminal window — sudo asks for your password once. "
+                + "This pane switches to Paired by itself.\n\nThe command, also on the clipboard:\n\(command)"
         } catch {
             pairMessage = "Could not open a terminal: \(error.localizedDescription)\n\n\(command)"
         }
@@ -220,14 +211,12 @@ final class PaneStatus: Pane {
                     self.pairState = state
                     self.showPairing()
                 }
-            case .needsTerminal(let command, let reason):
+            case .needsTerminal(let command, _):
                 self.pendingCommand = command
                 let board = NSPasteboard.general
                 board.clearContents()
                 board.setString(command, forType: .string)
-                self.pairMessage = "The password dialog could not finish pairing (\(reason)).\n\n"
-                    + "Open in Terminal runs the same command there and asks for your password once. "
-                    + "It is also on the clipboard:\n\n\(command)"
+                self.openTerminal()
             case .failed(let message):
                 self.pairMessage = message
             }

@@ -100,21 +100,25 @@ enum Pairing {
         case failed(String)
     }
 
-    /// Finds this device's identity and pairs it through macOS's own password
-    /// dialog, falling back to a terminal command when that cannot work.
+    /// Finds this device's identity and returns the command that pairs it.
     ///
-    /// sc_auth pair needs two things at once: root, and the ctkd of the session
-    /// that holds the token. Plain `osascript … with administrator privileges`
-    /// got the first by losing the second — its helper runs in the system
-    /// bootstrap namespace, where `com.apple.ctkd.token-client` resolves to the
-    /// system ctkd (`-st`), which refused "non-existing/missing tokenID" and
-    /// surfaced as CryptoTokenKit error -8. Measured. Mach lookups are scoped by
-    /// namespace, not by uid, which is why `sudo` from a terminal works: it
-    /// stays in the user's namespace. `launchctl asuser` puts the root command
-    /// back into it.
+    /// **Why not macOS's own password dialog.** sc_auth pair needs root, and it
+    /// needs to be run from the user's login session. `sudo` in a terminal is
+    /// both. `osascript … with administrator privileges` is neither, and both
+    /// halves were measured failing with CryptoTokenKit error -8:
     ///
-    /// The app never collects the password itself — an app that asked for it
-    /// and ran sudo would teach exactly the habit that makes phishing work.
+    ///  1. Plain, its helper runs in the system bootstrap namespace, so the
+    ///     token-client lookup lands on the system ctkd (`-st`), which logs
+    ///     "refusing request for non-existing/missing tokenID".
+    ///  2. Wrapped in `launchctl asuser <uid>`, that refusal disappears — the
+    ///     request now reaches the user's ctkd — and -8 comes back anyway, with
+    ///     nothing logged. The remaining difference from sudo is the audit
+    ///     session, which the dialog's helper never shares with the login.
+    ///
+    /// There is no honest way for an app to put a root process into the user's
+    /// audit session; the dishonest one is taking the password and running sudo
+    /// itself, which teaches the habit phishing depends on. So the command runs
+    /// in the user's terminal, and a dialog that can only fail is not shown.
     static func pair(deviceName: String, completion: @escaping (PairOutcome) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let finish = { (outcome: PairOutcome) in
@@ -143,23 +147,9 @@ enum Pairing {
                     return finish(.paired("Already paired — \(chosen.label)"))
                 }
 
-                let user = NSUserName()
-                let command = "sudo sc_auth pair -u \(user) -h \(chosen.hash)"
-                let script = "do shell script \"/bin/launchctl asuser \(getuid()) "
-                    + "/usr/sbin/sc_auth pair -u \(user) -h \(chosen.hash)\" with administrator privileges"
-                let output = try run("/usr/bin/osascript", ["-e", script])
-                log.error("sc_auth pair -h \(chosen.hash, privacy: .public) via launchctl asuser said: \(output, privacy: .public)")
-
-                if pairedHashes().contains(chosen.hash) {
-                    return finish(.paired("Paired. Test with: sudo -k && sudo -v"))
-                }
-                // osascript reports a dismissed dialog as error -128.
-                if output.contains("-128") {
-                    return finish(.failed("Cancelled — nothing was changed."))
-                }
-                let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                finish(.needsTerminal(command: command,
-                                      reason: detail.isEmpty ? "pairing did not take" : detail))
+                let command = "sudo sc_auth pair -u \(NSUserName()) -h \(chosen.hash)"
+                log.info("pairing \(chosen.label, privacy: .public) in the terminal")
+                finish(.needsTerminal(command: command, reason: ""))
             } catch {
                 finish(.failed("\(error)"))
             }
