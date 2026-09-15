@@ -16,6 +16,8 @@ struct DeviceStatus {
 
     var name: String { fields["name"] ?? "OpenHanko" }
     var chip: String { fields["chip"] ?? "unknown" }
+    /// `0.2.0+b952441`. Absent on firmware from before versioning.
+    var firmwareVersion: String? { fields["fw"] }
     var aidMode: String { fields["aid"] ?? "standard" }
     var idleLight: String { fields["idle"] ?? "blue" }
     var templateCount: Int { Int(fields["fp"] ?? "") ?? 0 }

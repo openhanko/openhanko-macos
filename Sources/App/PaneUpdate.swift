@@ -19,6 +19,47 @@ final class PaneUpdate: Pane {
     private let installButton = NSButton()
     private let progress = UI.caption("")
     private var watchTimer: Timer?
+    private let bundledValue = UI.mono()
+    private let deviceKey = PaneUpdate.key("On your device")
+    private let deviceValue = UI.mono()
+
+    /// The last version a running device reported, and which device. In update
+    /// mode the device is not running firmware at all and reports nothing, which
+    /// is exactly when the comparison is wanted.
+    private var lastSeen: (name: String, version: String?)?
+
+    private lazy var bundledVersion: String? = bundledFirmware.flatMap(PaneUpdate.versionInImage)
+
+    private static func key(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .tertiaryLabelColor
+        label.alignment = .right
+        label.widthAnchor.constraint(equalToConstant: 130).isActive = true
+        return label
+    }
+
+    /// Reads the firmware version out of a .uf2.
+    ///
+    /// The firmware carries `OPENHANKO_FW_VERSION=<version>` as one
+    /// NUL-terminated string (openhanko-firmware/src/version.c), the same bytes
+    /// STATUS reports as fw=. Reading it from the image means no sidecar file can
+    /// drift from what is actually installed. UF2 blocks are 512 bytes, with the
+    /// payload length at offset 16 and the payload from offset 32.
+    static func versionInImage(at url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url), data.count % 512 == 0 else { return nil }
+        var payload = Data()
+        var offset = 0
+        while offset + 512 <= data.count {
+            let size = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset + 16, as: UInt32.self) }
+            payload.append(data.subdata(in: (offset + 32)..<(offset + 32 + Int(min(size, 476)))))
+            offset += 512
+        }
+        guard let found = payload.range(of: Data("OPENHANKO_FW_VERSION=".utf8)) else { return nil }
+        let tail = payload[found.upperBound...]
+        let end = tail.firstIndex(of: 0) ?? tail.endIndex
+        return String(decoding: tail[..<end], as: UTF8.self)
+    }
 
     /// The bootloader's mass-storage volume. RP2350 mounts as RP2350; the older
     /// RP2040 used RPI-RP2, and a device that has been through both is not
@@ -39,9 +80,12 @@ final class PaneUpdate: Pane {
         installButton.target = self
         installButton.action = #selector(install)
 
-        stack.setViews([headline, detail, installButton, progress], in: .leading)
+        let versions = UI.column([UI.row([PaneUpdate.key("Bundled with this app"), bundledValue], spacing: 10),
+                                  UI.row([deviceKey, deviceValue], spacing: 10)], spacing: 4)
+        stack.setViews([headline, detail, versions, installButton, progress], in: .leading)
         stack.setCustomSpacing(10, after: headline)
         stack.setCustomSpacing(16, after: detail)
+        stack.setCustomSpacing(16, after: versions)
         stack.setCustomSpacing(8, after: installButton)
     }
 
@@ -70,6 +114,7 @@ final class PaneUpdate: Pane {
             return
         }
         installButton.isHidden = false
+        showVersions(status)
 
         if let volume = bootloaderVolume {
             headline.stringValue = "Ready to install"
@@ -93,6 +138,25 @@ final class PaneUpdate: Pane {
             installButton.isEnabled = false
             progress.stringValue = status.map { "\($0.name) is running normally." } ?? ""
         }
+    }
+
+    private func showVersions(_ status: DeviceStatus?) {
+        if let status { lastSeen = (status.name, status.firmwareVersion) }
+        bundledValue.stringValue = bundledVersion ?? "not stated in the image"
+
+        guard let seen = lastSeen else {
+            deviceKey.stringValue = "On your device"
+            deviceValue.stringValue = "connect it to find out"
+            return
+        }
+        // Named when it came from an earlier reading, since a device in update
+        // mode is not the one talking, and it need not be the same device.
+        deviceKey.stringValue = status == nil ? "Last seen on \(seen.name)" : "On \(seen.name)"
+        guard let installed = seen.version else {
+            deviceValue.stringValue = "not reported — predates versioning"
+            return
+        }
+        deviceValue.stringValue = installed == bundledVersion ? "\(installed) — the same" : installed
     }
 
     @objc private func install() {

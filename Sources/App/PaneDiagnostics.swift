@@ -61,6 +61,7 @@ final class PaneDiagnostics: Pane {
         return [
             UI.field("Device", status.name),
             UI.field("Silicon", status.chip),
+            UI.field("Firmware", status.firmwareVersion ?? "not reported — predates versioning"),
             UI.field("Identity", status.hasIdentity ? "on the device" : "none"),
             // Not `hasSecret`: the secret only protects anything when secure
             // boot stops other firmware reading it back.
