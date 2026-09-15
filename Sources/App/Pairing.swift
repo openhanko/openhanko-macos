@@ -91,27 +91,34 @@ enum Pairing {
         }
     }
 
-    /// Finds this device's identity and pairs it, prompting for a password.
+    /// What a Pair press came to.
+    enum PairOutcome {
+        case paired(String)
+        /// The password dialog could not finish it; this command, run with
+        /// sudo in a terminal, can.
+        case needsTerminal(command: String, reason: String)
+        case failed(String)
+    }
+
+    /// Finds this device's identity and pairs it through macOS's own password
+    /// dialog, falling back to a terminal command when that cannot work.
     ///
-    /// Finds the identity and hands the user the command; it does not run it.
+    /// sc_auth pair needs two things at once: root, and the ctkd of the session
+    /// that holds the token. Plain `osascript … with administrator privileges`
+    /// got the first by losing the second — its helper runs in the system
+    /// bootstrap namespace, where `com.apple.ctkd.token-client` resolves to the
+    /// system ctkd (`-st`), which refused "non-existing/missing tokenID" and
+    /// surfaced as CryptoTokenKit error -8. Measured. Mach lookups are scoped by
+    /// namespace, not by uid, which is why `sudo` from a terminal works: it
+    /// stays in the user's namespace. `launchctl asuser` puts the root command
+    /// back into it.
     ///
-    /// sc_auth pair needs root, and it needs to reach the ctkd of the session
-    /// that holds the token. Those two pull apart. `sudo` in a terminal keeps
-    /// the caller's session, so the request lands in the user's ctkd (`-tw`).
-    /// osascript's "with administrator privileges" runs the command as root in
-    /// the system context instead, and the request goes to the system ctkd
-    /// (`-st`), which answers "refusing request for non-existing/missing
-    /// tokenID" — surfaced to the user as CryptoTokenKit error -8. Measured.
-    ///
-    /// The only way an app could get root *inside* the session is to collect
-    /// the password and run sudo itself, which would teach exactly the habit
-    /// that makes phishing work. So the app does what provision.py does: puts
-    /// the exact command on the clipboard, and watches for the result.
-    static func pair(deviceName: String,
-                     completion: @escaping (Result<String, Failure>) -> Void) {
+    /// The app never collects the password itself — an app that asked for it
+    /// and ran sudo would teach exactly the habit that makes phishing work.
+    static func pair(deviceName: String, completion: @escaping (PairOutcome) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
-            let finish = { (result: Result<String, Failure>) in
-                DispatchQueue.main.async { completion(result) }
+            let finish = { (outcome: PairOutcome) in
+                DispatchQueue.main.async { completion(outcome) }
             }
             do {
                 // macOS can take a moment to read a freshly inserted card.
@@ -122,8 +129,7 @@ enum Pairing {
                     Thread.sleep(forTimeInterval: 1)
                 }
                 guard !candidates.isEmpty else {
-                    return finish(.failure(Failure(description:
-                        "macOS does not see a smart-card identity on this device.")))
+                    return finish(.failed("macOS does not see a smart-card identity on this device."))
                 }
 
                 // Prefer the identity that names this device, so two OpenHankos
@@ -134,22 +140,59 @@ enum Pairing {
                     ?? candidates[0]
 
                 if pairedHashes().contains(chosen.hash) {
-                    return finish(.success("Already paired — \(chosen.label)"))
+                    return finish(.paired("Already paired — \(chosen.label)"))
                 }
 
-                let command = "sudo sc_auth pair -u \(NSUserName()) -h \(chosen.hash)"
-                log.info("pairing \(chosen.label, privacy: .public): handing the user \(command, privacy: .public)")
-                DispatchQueue.main.sync {
-                    let board = NSPasteboard.general
-                    board.clearContents()
-                    board.setString(command, forType: .string)
+                let user = NSUserName()
+                let command = "sudo sc_auth pair -u \(user) -h \(chosen.hash)"
+                let script = "do shell script \"/bin/launchctl asuser \(getuid()) "
+                    + "/usr/sbin/sc_auth pair -u \(user) -h \(chosen.hash)\" with administrator privileges"
+                let output = try run("/usr/bin/osascript", ["-e", script])
+                log.error("sc_auth pair -h \(chosen.hash, privacy: .public) via launchctl asuser said: \(output, privacy: .public)")
+
+                if pairedHashes().contains(chosen.hash) {
+                    return finish(.paired("Paired. Test with: sudo -k && sudo -v"))
                 }
-                finish(.success(
-                    "Copied to the clipboard — paste it into Terminal:\n\n\(command)\n\n"
-                    + "It asks for your password. This window will notice when it has worked."))
+                // osascript reports a dismissed dialog as error -128.
+                if output.contains("-128") {
+                    return finish(.failed("Cancelled — nothing was changed."))
+                }
+                let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                finish(.needsTerminal(command: command,
+                                      reason: detail.isEmpty ? "pairing did not take" : detail))
             } catch {
-                finish(.failure(Failure(description: "\(error)")))
+                finish(.failed("\(error)"))
             }
         }
+    }
+
+    /// Opens the pairing command in the user's terminal, where sudo keeps the
+    /// session that holds the token.
+    ///
+    /// A `.command` file rather than scripting Terminal: the app runs with the
+    /// hardened runtime and no Apple Events entitlement, and opening a file
+    /// needs no automation permission. It also lands in whichever terminal the
+    /// user has set to open `.command` files.
+    static func openInTerminal(command: String) throws {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("io.openhanko.app", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("pair-openhanko.command")
+        let body = """
+            #!/bin/zsh
+            # Written by the OpenHanko app to pair this Mac with your device. Safe to delete.
+            echo "Pairing your OpenHanko with this Mac."
+            echo "sudo asks for your login password; nothing is shown as you type."
+            echo
+            if \(command); then
+              echo; echo "Paired. You can close this window."
+            else
+              echo; echo "Pairing failed — the lines above say why."
+            fi
+
+            """
+        try body.write(to: file, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+        NSWorkspace.shared.open(file)
     }
 }
