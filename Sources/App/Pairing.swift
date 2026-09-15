@@ -6,6 +6,7 @@
 // forty hex characters and the consequence of pasting the wrong one is an
 // account that trusts a card you do not have.
 
+import AppKit
 import Foundation
 import os
 
@@ -92,9 +93,20 @@ enum Pairing {
 
     /// Finds this device's identity and pairs it, prompting for a password.
     ///
-    /// The privilege prompt is macOS's own, raised through osascript. An app that
-    /// asked for the password itself and then ran sudo would be teaching exactly
-    /// the habit that makes phishing work.
+    /// Finds the identity and hands the user the command; it does not run it.
+    ///
+    /// sc_auth pair needs root, and it needs to reach the ctkd of the session
+    /// that holds the token. Those two pull apart. `sudo` in a terminal keeps
+    /// the caller's session, so the request lands in the user's ctkd (`-tw`).
+    /// osascript's "with administrator privileges" runs the command as root in
+    /// the system context instead, and the request goes to the system ctkd
+    /// (`-st`), which answers "refusing request for non-existing/missing
+    /// tokenID" — surfaced to the user as CryptoTokenKit error -8. Measured.
+    ///
+    /// The only way an app could get root *inside* the session is to collect
+    /// the password and run sudo itself, which would teach exactly the habit
+    /// that makes phishing work. So the app does what provision.py does: puts
+    /// the exact command on the clipboard, and watches for the result.
     static func pair(deviceName: String,
                      completion: @escaping (Result<String, Failure>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -125,20 +137,16 @@ enum Pairing {
                     return finish(.success("Already paired — \(chosen.label)"))
                 }
 
-                let user = NSUserName()
-                let script = "do shell script \"/usr/sbin/sc_auth pair -v -u \(user) -h \(chosen.hash)\""
-                    + " with administrator privileges"
-                let output = try run("/usr/bin/osascript", ["-e", script])
-                // Whatever sc_auth said, keep it somewhere that outlives the UI.
-                log.error("sc_auth pair -h \(chosen.hash, privacy: .public) said: \(output, privacy: .public)")
-
-                if pairedHashes().contains(chosen.hash) {
-                    finish(.success("Paired. Test with: sudo -k && sudo -v"))
-                } else {
-                    let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                    finish(.failure(Failure(description:
-                        detail.isEmpty ? "Pairing did not take." : detail)))
+                let command = "sudo sc_auth pair -u \(NSUserName()) -h \(chosen.hash)"
+                log.info("pairing \(chosen.label, privacy: .public): handing the user \(command, privacy: .public)")
+                DispatchQueue.main.sync {
+                    let board = NSPasteboard.general
+                    board.clearContents()
+                    board.setString(command, forType: .string)
                 }
+                finish(.success(
+                    "Copied to the clipboard — paste it into Terminal:\n\n\(command)\n\n"
+                    + "It asks for your password. This window will notice when it has worked."))
             } catch {
                 finish(.failure(Failure(description: "\(error)")))
             }

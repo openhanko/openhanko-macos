@@ -15,7 +15,13 @@ final class PaneStatus: Pane {
     private let name = UI.caption("")
     private let pairButton = NSButton()
     private let testButton = NSButton()
-    private let pairNote = UI.caption("")
+    // Wrapping and selectable: it can carry a command to paste, and a
+    // single-line caption clipped it after the first line.
+    private let pairNote: NSTextField = {
+        let field = UI.body()
+        field.isSelectable = true
+        return field
+    }()
     private let testNote = UI.body()
 
     /// Pairing state, and the device it was established for.
@@ -32,6 +38,10 @@ final class PaneStatus: Pane {
     /// overwrote the result within a cycle, so a failure was on screen for
     /// about as long as it took to notice something had flashed.
     private var pairMessage: String?
+    /// Polls tick every two seconds; sc_auth is asked again every fifth one
+    /// while a pairing command is outstanding, so the pane notices success
+    /// without being told and without hammering sc_auth.
+    private var pollsSincePairCheck = 0
 
     override func build() {
         dot.font = .systemFont(ofSize: 13)
@@ -102,13 +112,20 @@ final class PaneStatus: Pane {
             return
         }
 
-        if pairCheckedFor != status.name {
+        var recheck = false
+        if case .unpaired = pairState, pairMessage != nil {
+            pollsSincePairCheck += 1
+            if pollsSincePairCheck >= 5 { pollsSincePairCheck = 0; recheck = true }
+        }
+        if pairCheckedFor != status.name || recheck {
+            if pairCheckedFor != status.name { pairMessage = nil }
             pairCheckedFor = status.name
             pairState = .unknown
-            pairMessage = nil
             Pairing.state(deviceName: status.name) { [weak self] state in
                 guard let self else { return }
                 self.pairState = state
+                // The command the user was handed has done its job.
+                if case .paired = state { self.pairMessage = nil }
                 self.showPairing()
             }
         }
@@ -140,7 +157,7 @@ final class PaneStatus: Pane {
             pairNote.stringValue = "Paired with this Mac · \(label)"
         case .unpaired:
             pairButton.isHidden = false
-            pairNote.stringValue = "Runs sc_auth. macOS asks for your password."
+            pairNote.stringValue = "Puts the sc_auth command on the clipboard for you to paste into Terminal."
         }
     }
 
