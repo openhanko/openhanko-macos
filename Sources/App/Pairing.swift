@@ -7,6 +7,9 @@
 // account that trusts a card you do not have.
 
 import Foundation
+import os
+
+private let log = Logger(subsystem: "io.openhanko.app", category: "pairing")
 
 enum Pairing {
     struct Failure: Error, CustomStringConvertible {
@@ -123,9 +126,11 @@ enum Pairing {
                 }
 
                 let user = NSUserName()
-                let script = "do shell script \"/usr/sbin/sc_auth pair -u \(user) -h \(chosen.hash)\""
+                let script = "do shell script \"/usr/sbin/sc_auth pair -v -u \(user) -h \(chosen.hash)\""
                     + " with administrator privileges"
                 let output = try run("/usr/bin/osascript", ["-e", script])
+                // Whatever sc_auth said, keep it somewhere that outlives the UI.
+                log.error("sc_auth pair -h \(chosen.hash, privacy: .public) said: \(output, privacy: .public)")
 
                 if pairedHashes().contains(chosen.hash) {
                     finish(.success("Paired. Test with: sudo -k && sudo -v"))

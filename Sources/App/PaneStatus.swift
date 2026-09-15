@@ -27,6 +27,12 @@ final class PaneStatus: Pane {
     private var pairState: Pairing.State = .unknown
     private var pairCheckedFor: String?
 
+    /// The outcome of the last Pair press, kept until the next press or until
+    /// the device changes. Without this the two-second poll's showPairing()
+    /// overwrote the result within a cycle, so a failure was on screen for
+    /// about as long as it took to notice something had flashed.
+    private var pairMessage: String?
+
     override func build() {
         dot.font = .systemFont(ofSize: 13)
         let status = UI.row([dot, headline], spacing: 6)
@@ -99,6 +105,7 @@ final class PaneStatus: Pane {
         if pairCheckedFor != status.name {
             pairCheckedFor = status.name
             pairState = .unknown
+            pairMessage = nil
             Pairing.state(deviceName: status.name) { [weak self] state in
                 guard let self else { return }
                 self.pairState = state
@@ -114,6 +121,13 @@ final class PaneStatus: Pane {
     /// it implies the setup did not take, and the honest answer was one sc_auth
     /// call away the whole time.
     private func showPairing() {
+        // A result the user has not yet dismissed wins over the state line.
+        if let pairMessage {
+            if case .unpaired(_) = pairState { pairButton.isHidden = false }
+            else { pairButton.isHidden = true }
+            pairNote.stringValue = pairMessage
+            return
+        }
         switch pairState {
         case .unknown:
             pairButton.isHidden = true
@@ -149,20 +163,26 @@ final class PaneStatus: Pane {
     @objc private func pair() {
         guard let status = DeviceAgent.shared.status else { return }
         pairButton.isEnabled = false
+        pairMessage = nil
         pairNote.stringValue = "Looking for the card in macOS…"
         Pairing.pair(deviceName: status.name) { [weak self] result in
             guard let self else { return }
             self.pairButton.isEnabled = true
             switch result {
             case .success(let message):
-                self.pairNote.stringValue = message
+                self.pairMessage = message
                 // Re-ask rather than assume: pairing that reported success and
                 // did not take is exactly the case this pane exists to notice.
-                self.pairCheckedFor = nil
-                DeviceAgent.shared.refresh()
+                self.pairState = .unknown
+                Pairing.state(deviceName: status.name) { [weak self] state in
+                    guard let self else { return }
+                    self.pairState = state
+                    self.showPairing()
+                }
             case .failure(let error):
-                self.pairNote.stringValue = "\(error)"
+                self.pairMessage = "\(error)"
             }
+            self.showPairing()
         }
     }
 }
