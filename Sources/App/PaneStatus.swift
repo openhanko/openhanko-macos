@@ -26,6 +26,12 @@ final class PaneStatus: Pane {
     }()
     private let testNote = UI.body()
 
+    // The one place an update announces itself without being asked. This pane is
+    // what opens, so a line here is the difference between a check that informs
+    // somebody and a check that waits to be discovered.
+    private let updateNote = UI.body()
+    private var updatesObserver: NSObjectProtocol?
+
     /// Pairing state, and the device it was established for.
     ///
     /// Cached because answering it means running sc_auth twice, which is not
@@ -61,8 +67,10 @@ final class PaneStatus: Pane {
         testButton.action = #selector(testAuth)
         testButton.isHidden = true
 
+        updateNote.isHidden = true
         stack.setViews([status, name, detail, UI.separator(),
-                        UI.row([pairButton, testButton]), pairNote, testNote],
+                        UI.row([pairButton, testButton]), pairNote, testNote,
+                        updateNote],
                        in: .leading)
         stack.setCustomSpacing(4, after: status)
         stack.setCustomSpacing(16, after: name)
@@ -71,7 +79,43 @@ final class PaneStatus: Pane {
         stack.setCustomSpacing(10, after: pairNote)
     }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        updatesObserver = NotificationCenter.default.addObserver(
+            forName: Updates.changed, object: nil, queue: .main) { [weak self] _ in
+                self?.showUpdates(DeviceAgent.shared.status)
+            }
+        showUpdates(DeviceAgent.shared.status)
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        if let updatesObserver {
+            NotificationCenter.default.removeObserver(updatesObserver)
+            self.updatesObserver = nil
+        }
+    }
+
+    /// One line, naming what is waiting and where to go. Deliberately not a
+    /// button: everything it could offer lives one tab away, and a second route
+    /// to the same two actions is how a small window stops being small.
+    private func showUpdates(_ status: DeviceStatus?) {
+        let app = Updates.appUpdate
+        let firmware = Updates.firmwareUpdate(forDeviceVersion: status?.firmwareVersion)
+        let waiting = [app.map { "OpenHanko \($0.version)" },
+                       firmware.map { "firmware \($0.version)" }].compactMap { $0 }
+        guard !waiting.isEmpty else {
+            updateNote.isHidden = true
+            return
+        }
+        updateNote.stringValue = waiting.count == 2
+            ? "\(waiting[0]) and \(waiting[1]) are available — see the Update tab."
+            : "\(waiting[0]) is available — see the Update tab."
+        updateNote.isHidden = false
+    }
+
     override func apply(_ status: DeviceStatus?, error: String?) {
+        showUpdates(status)
         testNote.stringValue = testNote.stringValue.isEmpty ? "" : testNote.stringValue
         guard let status else {
             testButton.isHidden = true

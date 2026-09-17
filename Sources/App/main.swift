@@ -59,6 +59,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         DeviceAgent.shared.startPolling()
+
+        // Asked here rather than by the Update pane, which only asked when
+        // somebody opened it — so the one thing that could tell you an update
+        // existed was the thing you had to already suspect.
+        Updates.refresh()
+        for name in [Updates.changed, DeviceAgent.statusChanged] {
+            NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main) { [weak self] _ in self?.markUpdateTab() }
+        }
+    }
+
+    /// A dot on the Update tab when either feed has something. Both signals
+    /// matter: the app comparison needs only the feed, and the firmware
+    /// comparison needs the device too, so this is recomputed when either moves.
+    private func markUpdateTab() {
+        guard let tabs, let item = tabs.tabViewItems.last else { return }
+        let firmware = Updates.firmwareUpdate(
+            forDeviceVersion: DeviceAgent.shared.status?.firmwareVersion)
+        let waiting = Updates.appUpdate != nil || firmware != nil
+        item.label = waiting ? "Update ●" : "Update"
     }
 
     /// View menu, ⌘1 to ⌘5.

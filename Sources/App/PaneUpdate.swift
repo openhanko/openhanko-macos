@@ -34,6 +34,7 @@ final class PaneUpdate: Pane {
     private let appLine = UI.body()
     private let appButton = NSButton()
     private var bundledRow = NSStackView()
+    private var updatesObserver: NSObjectProtocol?
 
     /// The last version a running device reported, and which device. In update
     /// mode the device is not running firmware at all and reports nothing, which
@@ -141,6 +142,8 @@ final class PaneUpdate: Pane {
         watchTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.apply(DeviceAgent.shared.status, error: nil)
         }
+        updatesObserver = NotificationCenter.default.addObserver(
+            forName: Updates.changed, object: nil, queue: .main) { [weak self] _ in self?.adopt() }
         check()
     }
 
@@ -148,34 +151,43 @@ final class PaneUpdate: Pane {
         super.viewDidDisappear()
         watchTimer?.invalidate()
         watchTimer = nil
+        if let updatesObserver {
+            NotificationCenter.default.removeObserver(updatesObserver)
+            self.updatesObserver = nil
+        }
     }
 
-    /// Asks for both feeds. Nothing here is modal and nothing blocks: a machine
-    /// with no network shows what the app was built with and installs that.
+    /// Reads what the launch-time check found. The fetching moved to Updates so
+    /// the result exists before anyone opens this tab; refreshing here only
+    /// covers the case where the switch in Settings was turned on since.
     private func check() {
-        guard Updates.enabled else {
+        if !Updates.answered { Updates.refresh() }
+        adopt()
+    }
+
+    private func adopt() {
+        latest = Updates.latestFirmware
+        appRelease = Updates.appUpdate
+
+        if !Updates.enabled {
             latestValue.stringValue = "not checked — switched off in Settings"
-            return
+        } else if latest == nil && Updates.answered {
+            latestValue.stringValue = "could not reach openhanko.io"
         }
-        latestValue.stringValue = "checking…"
-        Updates.firmware { [weak self] release in
-            guard let self else { return }
-            self.latest = release
-            if release == nil { self.latestValue.stringValue = "could not reach openhanko.io" }
-            self.apply(DeviceAgent.shared.status, error: nil)
-        }
-        Updates.app { [weak self] release in
-            guard let self, let release else { return }
-            self.appRelease = release
-            guard Updates.isNewer(release.version, than: Updates.appVersion) else { return }
-            self.appLine.stringValue = """
+
+        if let release = appRelease {
+            appLine.stringValue = """
                 OpenHanko \(release.version) is available. This app is \
                 \(Updates.appVersion). Download it from the release page and \
                 replace this copy; it will not replace itself.
                 """
-            self.appLine.isHidden = false
-            self.appButton.isHidden = release.notes == nil && release.url.path.isEmpty
+            appLine.isHidden = false
+            appButton.isHidden = false
+        } else {
+            appLine.isHidden = true
+            appButton.isHidden = true
         }
+        apply(DeviceAgent.shared.status, error: nil)
     }
 
     override func apply(_ status: DeviceStatus?, error: String?) {

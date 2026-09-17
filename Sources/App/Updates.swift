@@ -103,12 +103,53 @@ enum Updates {
         task.resume()
     }
 
-    static func app(completion: @escaping (Release?) -> Void) {
-        fetch("app.json") { release in DispatchQueue.main.async { completion(release) } }
+    // Held here rather than in the Update pane, because the pane was the only
+    // thing that ever asked and it only asked when someone opened it. Nothing
+    // could tell you an update existed until you went looking for one, which is
+    // the opposite of what a check is for.
+    private(set) static var latestApp: Release?
+    private(set) static var latestFirmware: Release?
+    private(set) static var answered = false
+
+    /// Posted when either feed comes back, so the tab badge and the status pane
+    /// can react without polling or knowing about each other.
+    static let changed = Notification.Name("io.openhanko.updatesChanged")
+
+    /// Asks for both feeds once. Called at launch; safe to call again.
+    static func refresh() {
+        guard enabled else {
+            latestApp = nil; latestFirmware = nil; answered = true
+            NotificationCenter.default.post(name: changed, object: nil)
+            return
+        }
+        fetch("app.json") { release in
+            DispatchQueue.main.async {
+                latestApp = release
+                answered = true
+                NotificationCenter.default.post(name: changed, object: nil)
+            }
+        }
+        fetch("firmware.json") { release in
+            DispatchQueue.main.async {
+                latestFirmware = release
+                answered = true
+                NotificationCenter.default.post(name: changed, object: nil)
+            }
+        }
     }
 
-    static func firmware(completion: @escaping (Release?) -> Void) {
-        fetch("firmware.json") { release in DispatchQueue.main.async { completion(release) } }
+    /// A newer app than the one running, or nothing.
+    static var appUpdate: Release? {
+        guard let latestApp, isNewer(latestApp.version, than: appVersion) else { return nil }
+        return latestApp
+    }
+
+    /// A newer firmware than the device is running, or nothing. Needs the device,
+    /// so it answers nil while nothing is plugged in rather than guessing.
+    static func firmwareUpdate(forDeviceVersion installed: String?) -> Release? {
+        guard let latestFirmware, let installed,
+              isNewer(latestFirmware.version, than: installed) else { return nil }
+        return latestFirmware
     }
 
     /// Downloads a firmware image and checks it against the digest the feed
