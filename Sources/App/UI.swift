@@ -12,6 +12,16 @@ enum UI {
     static let textWidth: CGFloat = 420
     static let padding: CGFloat = 20
 
+    /// 朱 — the vermilion a hanko is stamped in, and the site's accent. Two
+    /// values because the darker one disappears against a dark window and the
+    /// lighter one is too hot against a light one; the same pair the website
+    /// defines as --shu.
+    static let shu = NSColor(name: "shu") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.949, green: 0.345, blue: 0.290, alpha: 1)   // f2584a
+            : NSColor(srgbRed: 0.890, green: 0.259, blue: 0.204, alpha: 1)   // e34234
+    }
+
     static func title(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 15, weight: .semibold)

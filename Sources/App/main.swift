@@ -70,16 +70,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// A dot on the Update tab when either feed has something. Both signals
-    /// matter: the app comparison needs only the feed, and the firmware
-    /// comparison needs the device too, so this is recomputed when either moves.
+    /// Marks the Update tab when either feed has something. Both signals matter:
+    /// the app comparison needs only the feed, and the firmware comparison needs
+    /// the device too, so this is recomputed when either moves.
+    ///
+    /// The mark is the tab's own icon in vermilion rather than a bullet in the
+    /// label. A toolbar item's title cannot carry a colour, and a grey dot after
+    /// the word was the same weight as everything around it — which is the
+    /// opposite of what a mark is for.
     private func markUpdateTab() {
         guard let tabs, let item = tabs.tabViewItems.last else { return }
         let firmware = Updates.firmwareUpdate(
             forDeviceVersion: DeviceAgent.shared.status?.firmwareVersion,
             connected: DeviceAgent.shared.status != nil)
         let waiting = Updates.appUpdate != nil || firmware != nil
-        item.label = waiting ? "Update ●" : "Update"
+
+        let symbol = waiting ? "arrow.down.circle.fill" : "arrow.down.circle"
+        let image = NSImage(systemSymbolName: symbol,
+                            accessibilityDescription: waiting ? "Update available" : "Update")
+        if waiting {
+            // isTemplate false or the toolbar paints it in the system's own
+            // colour and the point is lost.
+            let tinted = image?.withSymbolConfiguration(
+                NSImage.SymbolConfiguration(paletteColors: [UI.shu]))
+            tinted?.isTemplate = false
+            item.image = tinted ?? image
+        } else {
+            item.image = image
+        }
+        item.label = "Update"
     }
 
     /// View menu, ⌘1 to ⌘5.

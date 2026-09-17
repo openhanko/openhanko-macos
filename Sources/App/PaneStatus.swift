@@ -109,9 +109,22 @@ final class PaneStatus: Pane {
             updateNote.isHidden = true
             return
         }
-        updateNote.stringValue = waiting.count == 2
+        let sentence = waiting.count == 2
             ? "\(waiting[0]) and \(waiting[1]) are available — see the Update tab."
             : "\(waiting[0]) is available — see the Update tab."
+
+        // A vermilion dot carries the notice; the sentence stays the weight of
+        // every other line on this pane. Colouring the whole sentence would make
+        // an available update look like a fault.
+        let line = NSMutableAttributedString(
+            string: "● ",
+            attributes: [.foregroundColor: UI.shu,
+                         .font: NSFont.systemFont(ofSize: 12)])
+        line.append(NSAttributedString(
+            string: sentence,
+            attributes: [.foregroundColor: NSColor.secondaryLabelColor,
+                         .font: NSFont.systemFont(ofSize: 12)]))
+        updateNote.attributedStringValue = line
         updateNote.isHidden = false
     }
 
