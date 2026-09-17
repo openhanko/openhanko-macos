@@ -264,6 +264,10 @@ final class PaneUpdate: Pane {
             switch newerThanDevice {
             case .some(true):  latestValue.stringValue = "\(latest.version) — newer than your device"
             case .some(false): latestValue.stringValue = "\(latest.version) — your device has it"
+            case .none where lastSeen != nil:
+                // Seen, but it reported no version at all, which means firmware
+                // older than the field itself.
+                latestValue.stringValue = "\(latest.version) — newer than your device"
             case .none:        latestValue.stringValue = latest.version
             }
             downloadButton.title = "Download \(latest.version)"

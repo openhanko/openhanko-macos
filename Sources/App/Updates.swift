@@ -144,12 +144,18 @@ enum Updates {
         return latestApp
     }
 
-    /// A newer firmware than the device is running, or nothing. Needs the device,
-    /// so it answers nil while nothing is plugged in rather than guessing.
-    static func firmwareUpdate(forDeviceVersion installed: String?) -> Release? {
-        guard let latestFirmware, let installed,
-              isNewer(latestFirmware.version, than: installed) else { return nil }
-        return latestFirmware
+    /// A newer firmware than the device is running, or nothing.
+    ///
+    /// `connected` separates "no device" from "a device that reports no version".
+    /// The version field arrived in 0.2.0, so a device that does not report one
+    /// is running something older than anything that could be published — which
+    /// is exactly the device most in need of being told, and which an earlier
+    /// version of this answered nothing for.
+    static func firmwareUpdate(forDeviceVersion installed: String?,
+                               connected: Bool) -> Release? {
+        guard let latestFirmware, connected else { return nil }
+        guard let installed else { return latestFirmware }
+        return isNewer(latestFirmware.version, than: installed) ? latestFirmware : nil
     }
 
     /// Downloads a firmware image and checks it against the digest the feed

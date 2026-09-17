@@ -76,7 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func markUpdateTab() {
         guard let tabs, let item = tabs.tabViewItems.last else { return }
         let firmware = Updates.firmwareUpdate(
-            forDeviceVersion: DeviceAgent.shared.status?.firmwareVersion)
+            forDeviceVersion: DeviceAgent.shared.status?.firmwareVersion,
+            connected: DeviceAgent.shared.status != nil)
         let waiting = Updates.appUpdate != nil || firmware != nil
         item.label = waiting ? "Update ●" : "Update"
     }

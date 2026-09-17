@@ -101,7 +101,8 @@ final class PaneStatus: Pane {
     /// to the same two actions is how a small window stops being small.
     private func showUpdates(_ status: DeviceStatus?) {
         let app = Updates.appUpdate
-        let firmware = Updates.firmwareUpdate(forDeviceVersion: status?.firmwareVersion)
+        let firmware = Updates.firmwareUpdate(forDeviceVersion: status?.firmwareVersion,
+                                              connected: status != nil)
         let waiting = [app.map { "OpenHanko \($0.version)" },
                        firmware.map { "firmware \($0.version)" }].compactMap { $0 }
         guard !waiting.isEmpty else {
