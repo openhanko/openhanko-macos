@@ -56,17 +56,21 @@ universal "${BUNDLE}/Contents/MacOS/${APP_NAME}" Sources/App/*.swift \
     -framework AppKit -framework CryptoTokenKit -framework Security
 cp Resources/Info-app.plist "${BUNDLE}/Contents/Info.plist"
 
-# A signed firmware image, if one has been put here. The Update pane installs it
-# by copying to the bootloader's mass-storage volume; without it that pane says
-# so and does nothing. Kept out of the repository because it is a build artefact
-# signed with the project key, not source.
+# No firmware image goes in here any more. It was 279K of a build artefact that
+# was stale the moment it shipped, and the only way to replace it was another
+# notarised release — which is exactly the problem the update feed exists to
+# solve. The Update pane fetches from openhanko.io and checks the published
+# SHA-256 before writing anything.
+#
+# Resources/firmware.uf2 is still read if present, because a bench build that
+# wants to install a locally signed image without publishing it is a reasonable
+# thing to want. Releases do not carry one.
 mkdir -p "${BUNDLE}/Contents/Resources"
 cp Resources/OpenHanko.icns "${BUNDLE}/Contents/Resources/"
 
-if [ -f Resources/firmware.uf2 ]; then
-    mkdir -p "${BUNDLE}/Contents/Resources"
+if [ -f Resources/firmware.uf2 ] && [ "${BUNDLE_FIRMWARE:-0}" = "1" ]; then
     cp Resources/firmware.uf2 "${BUNDLE}/Contents/Resources/firmware.uf2"
-    echo "    bundled firmware.uf2 ($(du -h Resources/firmware.uf2 | cut -f1))"
+    echo "    bundled firmware.uf2 ($(du -h Resources/firmware.uf2 | cut -f1)) — BUNDLE_FIRMWARE=1"
 fi
 
 echo "==> token extension"

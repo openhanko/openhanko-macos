@@ -173,15 +173,37 @@ final class PaneUpdate: Pane {
     }
 
     override func apply(_ status: DeviceStatus?, error: String?) {
-        guard bundledFirmware != nil || downloaded != nil else {
-            headline.stringValue = "No firmware bundled"
-            detail.stringValue = "This build does not carry a firmware image. Releases do."
+        showVersions(status)
+
+        // Having no image in hand is the ordinary state of a fresh install now
+        // that releases carry none, so it is a step in the sequence rather than
+        // the dead end it used to be.
+        guard sourceImage != nil else {
             installButton.isHidden = true
-            progress.stringValue = ""
+            headline.stringValue = "Nothing to install yet"
+            if !Updates.enabled {
+                detail.stringValue = """
+                    Update checking is switched off in Settings, so this cannot \
+                    fetch firmware. Turn it on, or install with picotool.
+                    """
+            } else if let latest {
+                detail.stringValue = """
+                    Firmware \(latest.version) is published. Download it here, \
+                    then put the device in update mode to install it.
+
+                    The download is checked against the checksum openhanko.io \
+                    publishes before it is written to anything.
+                    """
+            } else {
+                detail.stringValue = """
+                    This build carries no firmware image, and openhanko.io has \
+                    not answered yet. Firmware arrives through this pane rather \
+                    than inside the app.
+                    """
+            }
             return
         }
         installButton.isHidden = false
-        showVersions(status)
 
         if let volume = bootloaderVolume {
             headline.stringValue = "Ready to install"
