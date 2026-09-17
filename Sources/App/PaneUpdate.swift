@@ -10,6 +10,12 @@
 // tampered image copies fine and then refuses to boot, and the device returns to
 // the bootloader rather than becoming a brick. The signature does the work — this
 // pane only has to find the volume.
+//
+// The app still carries an image so that a machine with no network can install
+// one. What it carries is whatever was current when the app was built, which is
+// why this also asks openhanko.io: a firmware fix should not have to wait for an
+// app release and a notarisation round trip to reach anybody. See Updates.swift
+// for what that request contains and how to turn it off.
 
 import AppKit
 
@@ -17,16 +23,26 @@ final class PaneUpdate: Pane {
     private let headline = UI.title("")
     private let detail = UI.body()
     private let installButton = NSButton()
+    private let downloadButton = NSButton()
     private let progress = UI.caption("")
     private var watchTimer: Timer?
     private let bundledValue = UI.mono()
+    private let latestKey = PaneUpdate.key("Latest released")
+    private let latestValue = UI.mono()
     private let deviceKey = PaneUpdate.key("On your device")
     private let deviceValue = UI.mono()
+    private let appLine = UI.body()
+    private let appButton = NSButton()
 
     /// The last version a running device reported, and which device. In update
     /// mode the device is not running firmware at all and reports nothing, which
     /// is exactly when the comparison is wanted.
     private var lastSeen: (name: String, version: String?)?
+
+    /// What the feed says exists, and what has actually been fetched and checked.
+    private var latest: Release?
+    private var downloaded: (version: String, url: URL)?
+    private var appRelease: Release?
 
     private lazy var bundledVersion: String? = bundledFirmware.flatMap(PaneUpdate.versionInImage)
 
@@ -70,6 +86,11 @@ final class PaneUpdate: Pane {
         Bundle.main.url(forResource: "firmware", withExtension: "uf2")
     }
 
+    /// A fetched image wins over the bundled one, because it is the newer of the
+    /// two by the only test that got it here.
+    private var sourceImage: URL? { downloaded?.url ?? bundledFirmware }
+    private var sourceVersion: String? { downloaded?.version ?? bundledVersion }
+
     private var bootloaderVolume: String? {
         PaneUpdate.volumes.first { FileManager.default.fileExists(atPath: $0) }
     }
@@ -80,13 +101,30 @@ final class PaneUpdate: Pane {
         installButton.target = self
         installButton.action = #selector(install)
 
+        downloadButton.bezelStyle = .rounded
+        downloadButton.target = self
+        downloadButton.action = #selector(downloadFirmware)
+        downloadButton.isHidden = true
+
+        appButton.title = "See what changed"
+        appButton.bezelStyle = .rounded
+        appButton.target = self
+        appButton.action = #selector(openAppRelease)
+        appButton.isHidden = true
+        appLine.isHidden = true
+
         let versions = UI.column([UI.row([PaneUpdate.key("Bundled with this app"), bundledValue], spacing: 10),
+                                  UI.row([latestKey, latestValue], spacing: 10),
                                   UI.row([deviceKey, deviceValue], spacing: 10)], spacing: 4)
-        stack.setViews([headline, detail, versions, installButton, progress], in: .leading)
+        stack.setViews([headline, detail, versions,
+                        UI.row([installButton, downloadButton], spacing: 8), progress,
+                        UI.separator(), appLine, appButton], in: .leading)
         stack.setCustomSpacing(10, after: headline)
         stack.setCustomSpacing(16, after: detail)
         stack.setCustomSpacing(16, after: versions)
-        stack.setCustomSpacing(8, after: installButton)
+        stack.setCustomSpacing(8, after: stack.views[3])
+        stack.setCustomSpacing(20, after: progress)
+        stack.setCustomSpacing(10, after: appLine)
     }
 
     override func viewDidAppear() {
@@ -97,6 +135,7 @@ final class PaneUpdate: Pane {
         watchTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.apply(DeviceAgent.shared.status, error: nil)
         }
+        check()
     }
 
     override func viewDidDisappear() {
@@ -105,8 +144,36 @@ final class PaneUpdate: Pane {
         watchTimer = nil
     }
 
+    /// Asks for both feeds. Nothing here is modal and nothing blocks: a machine
+    /// with no network shows what the app was built with and installs that.
+    private func check() {
+        guard Updates.enabled else {
+            latestValue.stringValue = "not checked — switched off in Settings"
+            return
+        }
+        latestValue.stringValue = "checking…"
+        Updates.firmware { [weak self] release in
+            guard let self else { return }
+            self.latest = release
+            if release == nil { self.latestValue.stringValue = "could not reach openhanko.io" }
+            self.apply(DeviceAgent.shared.status, error: nil)
+        }
+        Updates.app { [weak self] release in
+            guard let self, let release else { return }
+            self.appRelease = release
+            guard Updates.isNewer(release.version, than: Updates.appVersion) else { return }
+            self.appLine.stringValue = """
+                OpenHanko \(release.version) is available. This app is \
+                \(Updates.appVersion). Download it from the release page and \
+                replace this copy; it will not replace itself.
+                """
+            self.appLine.isHidden = false
+            self.appButton.isHidden = release.notes == nil && release.url.path.isEmpty
+        }
+    }
+
     override func apply(_ status: DeviceStatus?, error: String?) {
-        guard bundledFirmware != nil else {
+        guard bundledFirmware != nil || downloaded != nil else {
             headline.stringValue = "No firmware bundled"
             detail.stringValue = "This build does not carry a firmware image. Releases do."
             installButton.isHidden = true
@@ -118,9 +185,10 @@ final class PaneUpdate: Pane {
 
         if let volume = bootloaderVolume {
             headline.stringValue = "Ready to install"
+            let which = downloaded != nil ? "the firmware downloaded from openhanko.io"
+                                          : "the firmware bundled with this app"
             detail.stringValue = """
-                Installs the firmware bundled with this app. The device restarts \
-                on its own.
+                Installs \(which). The device restarts on its own.
 
                 An image that is wrong or tampered with will not start, and the \
                 device comes back here rather than becoming unusable.
@@ -136,13 +204,30 @@ final class PaneUpdate: Pane {
                 This works even if the firmware is broken or missing.
                 """
             installButton.isEnabled = false
-            progress.stringValue = status.map { "\($0.name) is running normally." } ?? ""
+            if progress.stringValue.isEmpty || PaneUpdate.volumes.contains(progress.stringValue) {
+                progress.stringValue = status.map { "\($0.name) is running normally." } ?? ""
+            }
         }
     }
 
     private func showVersions(_ status: DeviceStatus?) {
         if let status { lastSeen = (status.name, status.firmwareVersion) }
         bundledValue.stringValue = bundledVersion ?? "not stated in the image"
+
+        // The middle row carries the whole point of asking: whether anything
+        // newer than this app's own copy exists, and whether it is in hand yet.
+        if let downloaded {
+            latestKey.stringValue = "Downloaded"
+            latestValue.stringValue = "\(downloaded.version) — ready to install"
+            downloadButton.isHidden = true
+        } else if let latest {
+            latestKey.stringValue = "Latest released"
+            let newer = bundledVersion.map { Updates.isNewer(latest.version, than: $0) } ?? true
+            latestValue.stringValue = newer ? "\(latest.version) — newer than the bundled one"
+                                            : "\(latest.version) — the bundled one is current"
+            downloadButton.title = "Download \(latest.version)"
+            downloadButton.isHidden = !newer
+        }
 
         guard let seen = lastSeen else {
             deviceKey.stringValue = "On your device"
@@ -156,11 +241,38 @@ final class PaneUpdate: Pane {
             deviceValue.stringValue = "not reported — predates versioning"
             return
         }
-        deviceValue.stringValue = installed == bundledVersion ? "\(installed) — the same" : installed
+        deviceValue.stringValue = installed == sourceVersion ? "\(installed) — the same" : installed
+    }
+
+    @objc private func downloadFirmware() {
+        guard let latest else { return }
+        downloadButton.isEnabled = false
+        progress.stringValue = "Downloading \(latest.version)…"
+        Updates.download(latest) { [weak self] result in
+            guard let self else { return }
+            self.downloadButton.isEnabled = true
+            switch result {
+            case .success(let file):
+                // Trust the image over the feed about its own version: the string
+                // is compiled into the firmware, and a feed that disagrees with it
+                // is a feed that is wrong.
+                let stated = PaneUpdate.versionInImage(at: file) ?? latest.version
+                self.downloaded = (stated, file)
+                self.progress.stringValue = "Downloaded and checked. Put the device in update mode to install."
+            case .failure(let why):
+                self.progress.stringValue = "Download failed: \(why.reason)"
+            }
+            self.apply(DeviceAgent.shared.status, error: nil)
+        }
+    }
+
+    @objc private func openAppRelease() {
+        guard let release = appRelease else { return }
+        NSWorkspace.shared.open(release.notes ?? release.url)
     }
 
     @objc private func install() {
-        guard let source = bundledFirmware, let volume = bootloaderVolume else { return }
+        guard let source = sourceImage, let volume = bootloaderVolume else { return }
         installButton.isEnabled = false
         progress.stringValue = "Writing…"
 

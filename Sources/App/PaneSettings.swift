@@ -15,6 +15,11 @@ final class PaneSettings: Pane {
     private let explanation = UI.body()
     private let aidLine = UI.caption("")
 
+    // The one setting here that is not stored on the device. It governs whether
+    // the app is allowed to talk to openhanko.io at all.
+    private let updateCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let updateNote = UI.caption("")
+
     override func build() {
         popup.addItems(withTitles: PaneSettings.colours.map { $0.capitalized })
         popup.target = self
@@ -29,8 +34,23 @@ final class PaneSettings: Pane {
         // the LED is wired.
         explanation.stringValue = "What the ring shows when the device is idle."
 
+        updateCheck.title = "Check openhanko.io for updates"
+        updateCheck.target = self
+        updateCheck.action = #selector(toggleUpdateCheck)
+        updateCheck.state = Updates.enabled ? .on : .off
+        // Said plainly rather than buried in a policy. Somebody who bought this
+        // because the key never leaves the key is owed the same directness about
+        // the one thing that does leave the machine.
+        updateNote.stringValue = """
+            Asks for two small files naming the current firmware and app \
+            versions. It sends which version is asking and nothing else: no \
+            identifier, no serial, no count. Off means the app makes no network \
+            requests at all.
+            """
+
         stack.setViews([UI.row([label, popup], spacing: 12), note,
-                        explanation, UI.separator(), aidLine], in: .leading)
+                        explanation, UI.separator(), aidLine,
+                        UI.separator(), updateCheck, updateNote], in: .leading)
         stack.setCustomSpacing(6, after: stack.views[0])
         stack.setCustomSpacing(16, after: note)
         stack.setCustomSpacing(16, after: explanation)
@@ -56,6 +76,10 @@ final class PaneSettings: Pane {
         aidLine.stringValue = status.aidMode == "pinpad"
             ? "Touch-only mode. This driver is handling the device."
             : "Driverless mode. Reconnect the device to switch to touch-only."
+    }
+
+    @objc private func toggleUpdateCheck() {
+        Updates.enabled = updateCheck.state == .on
     }
 
     @objc private func chooseColour() {
