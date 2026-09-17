@@ -33,6 +33,7 @@ final class PaneUpdate: Pane {
     private let deviceValue = UI.mono()
     private let appLine = UI.body()
     private let appButton = NSButton()
+    private var bundledRow = NSStackView()
 
     /// The last version a running device reported, and which device. In update
     /// mode the device is not running firmware at all and reports nothing, which
@@ -113,7 +114,12 @@ final class PaneUpdate: Pane {
         appButton.isHidden = true
         appLine.isHidden = true
 
-        let versions = UI.column([UI.row([PaneUpdate.key("Bundled with this app"), bundledValue], spacing: 10),
+        // Only shown when there is one. Releases carry no image, so for almost
+        // everyone this row would read "not stated in the image" and mean
+        // nothing; it exists for a bench build made with BUNDLE_FIRMWARE=1.
+        bundledRow = UI.row([PaneUpdate.key("Bundled with this app"), bundledValue], spacing: 10)
+        bundledRow.isHidden = bundledFirmware == nil
+        let versions = UI.column([bundledRow,
                                   UI.row([latestKey, latestValue], spacing: 10),
                                   UI.row([deviceKey, deviceValue], spacing: 10)], spacing: 4)
         stack.setViews([headline, detail, versions,
@@ -183,22 +189,18 @@ final class PaneUpdate: Pane {
             headline.stringValue = "Nothing to install yet"
             if !Updates.enabled {
                 detail.stringValue = """
-                    Update checking is switched off in Settings, so this cannot \
-                    fetch firmware. Turn it on, or install with picotool.
+                    Update checking is off in Settings, so this cannot fetch \
+                    firmware.
                     """
             } else if let latest {
                 detail.stringValue = """
-                    Firmware \(latest.version) is published. Download it here, \
-                    then put the device in update mode to install it.
-
-                    The download is checked against the checksum openhanko.io \
-                    publishes before it is written to anything.
+                    Firmware \(latest.version) is published. Download it, then \
+                    put the device in update mode.
                     """
             } else {
                 detail.stringValue = """
-                    This build carries no firmware image, and openhanko.io has \
-                    not answered yet. Firmware arrives through this pane rather \
-                    than inside the app.
+                    Waiting for openhanko.io. Firmware arrives through this pane \
+                    rather than inside the app.
                     """
             }
             return
@@ -207,10 +209,9 @@ final class PaneUpdate: Pane {
 
         if let volume = bootloaderVolume {
             headline.stringValue = "Ready to install"
-            let which = downloaded != nil ? "the firmware downloaded from openhanko.io"
-                                          : "the firmware bundled with this app"
             detail.stringValue = """
-                Installs \(which). The device restarts on its own.
+                Writes \(sourceVersion ?? "the image"). The device restarts on \
+                its own.
 
                 An image that is wrong or tampered with will not start, and the \
                 device comes back here rather than becoming unusable.
@@ -220,10 +221,12 @@ final class PaneUpdate: Pane {
         } else {
             headline.stringValue = "Put the device in update mode"
             detail.stringValue = """
-                Double-tap the reset button on the device. A disk called RP2350 \
-                appears and this page will notice it.
+                Press twice, quickly, into the small hole in the base, using the \
+                pin from the box. A disk called RP2350 appears and this page \
+                notices it.
 
-                This works even if the firmware is broken or missing.
+                It works even when the firmware is broken or missing, which is \
+                why it is a hole rather than a command.
                 """
             installButton.isEnabled = false
             if progress.stringValue.isEmpty || PaneUpdate.volumes.contains(progress.stringValue) {
@@ -244,11 +247,18 @@ final class PaneUpdate: Pane {
             downloadButton.isHidden = true
         } else if let latest {
             latestKey.stringValue = "Latest released"
-            let newer = bundledVersion.map { Updates.isNewer(latest.version, than: $0) } ?? true
-            latestValue.stringValue = newer ? "\(latest.version) — newer than the bundled one"
-                                            : "\(latest.version) — the bundled one is current"
+            let onDevice = lastSeen?.version
+            let newerThanDevice = onDevice.map { Updates.isNewer(latest.version, than: $0) }
+            switch newerThanDevice {
+            case .some(true):  latestValue.stringValue = "\(latest.version) — newer than your device"
+            case .some(false): latestValue.stringValue = "\(latest.version) — your device has it"
+            case .none:        latestValue.stringValue = latest.version
+            }
             downloadButton.title = "Download \(latest.version)"
-            downloadButton.isHidden = !newer
+            // Offered whenever nothing is in hand, even when the device already
+            // matches: reinstalling is a legitimate thing to want, and the pane
+            // has nothing to install without it.
+            downloadButton.isHidden = false
         }
 
         guard let seen = lastSeen else {
@@ -280,7 +290,7 @@ final class PaneUpdate: Pane {
                 // is a feed that is wrong.
                 let stated = PaneUpdate.versionInImage(at: file) ?? latest.version
                 self.downloaded = (stated, file)
-                self.progress.stringValue = "Downloaded and checked. Put the device in update mode to install."
+                self.progress.stringValue = "Downloaded, and it matches the published checksum."
             case .failure(let why):
                 self.progress.stringValue = "Download failed: \(why.reason)"
             }
